@@ -2,36 +2,42 @@
 import { formatTimestampInS } from '../utils/time-utils';
 import IconEdit from '~icons/anime-skip/edit';
 import IconClose from '~icons/anime-skip/close';
-import InPlaceTimestampTypeSelect from './InPlaceTimestampTypeSelect.vue';
-import { AmbiguousTimestamp } from '../utils/timestamp-utils';
-import useTimestampEditedState from '../composables/useTimestampEditedState';
-import { TimestampState } from '../utils/TimestampState';
+// import InPlaceTimestampTypeSelect from './InPlaceTimestampTypeSelect.vue'; // Removed: Incompatible with MySubmission
+import type { MySubmission } from '../utils/supabase'; // Import the submission type
+// Removed imports for AmbiguousTimestamp, useTimestampEditedState, TimestampState
 
 const props = defineProps<{
-  timestamp: AmbiguousTimestamp;
+  // Changed prop type to MySubmission
+  submission: MySubmission;
 }>();
 
-const timestamp = toRef(props, 'timestamp');
-const type = useTimestampType(timestamp);
-const at = computed(() => formatTimestampInS(props.timestamp.at, false));
+// Use submission fields directly
+const startTime = computed(() =>
+  formatTimestampInS(props.submission.start_time, false),
+);
+const endTime = computed(() =>
+  formatTimestampInS(props.submission.end_time, false),
+);
+const typeDisplay = computed(() => props.submission.type.replace('_', ' ')); // Basic formatting
 
 const { currentTime } = useVideoControls();
 function goToTimestamp() {
-  currentTime.value = props.timestamp.at;
+  currentTime.value = props.submission.start_time; // Seek to start_time
 }
 
-const deleteTimestamp = useDeleteTimestamp();
-const editTimestamp = useEditExistingTimestamp();
+// Removed composables related to editing/deleting AmbiguousTimestamp
+// const deleteTimestamp = useDeleteTimestamp();
+// const editTimestamp = useEditExistingTimestamp();
 
 const hoveredId = useHoveredTimestampId();
 const setHovered = useThrottleFn(() => {
-  hoveredId.value = props.timestamp.id;
+  // hoveredId.value = props.submission.id; // Use submission ID if hover needed
 });
 function clearHovered() {
-  hoveredId.value = undefined;
+  // hoveredId.value = undefined;
 }
 
-const state = useTimestampEditedState(timestamp);
+// Removed useTimestampEditedState - use submission.state directly
 </script>
 
 <template>
@@ -42,58 +48,42 @@ const state = useTimestampEditedState(timestamp);
   >
     <td class="h-12">
       <div class="pl-2 pr-4 cursor-pointer" @click="goToTimestamp">
+        <!-- Display Start and End Time -->
+        <p class="text-sm font-mono text-right">
+          {{ startTime }} - {{ endTime }}
+        </p>
+        <!-- Display Submission State -->
         <p
-          class="text-lg font-black text-right"
+          class="uppercase text-[0.66rem] font-bold -mt-1 text-right"
           :class="{
-            'text-primary': state === TimestampState.NotChanged,
-            'text-secondary': state === TimestampState.Edited,
-            'text-success': state === TimestampState.New,
+            'text-warning': submission.state === 'pending',
+            'text-success': submission.state === 'approved',
+            'text-error': submission.state === 'rejected', // Assuming 'rejected' state exists
+            'text-base-content text-opacity-60':
+              submission.state !== 'pending' &&
+              submission.state !== 'approved' &&
+              submission.state !== 'rejected',
           }"
         >
-          {{ at }}
-        </p>
-        <p
-          v-if="state === TimestampState.Edited"
-          class="uppercase text-[0.66rem] text-secondary font-bold -mt-1.5 text-right"
-        >
-          Edited
-        </p>
-        <p
-          v-else-if="state === TimestampState.New"
-          class="uppercase text-[0.66rem] text-success font-bold -mt-1.5 text-right"
-        >
-          New
+          {{ submission.state }}
         </p>
       </div>
     </td>
 
-    <td class="w-full h-12" :title="type?.description">
-      <div class="flex items-center gap-1">
-        <!-- Select -->
-        <in-place-timestamp-type-select :timestamp="timestamp" />
-
-        <div class="flex-1" />
-
-        <!-- Edit -->
-        <button
-          class="shrink-0 btn btn-circle btn-ghost text-base-content text-opacity-50 hover:text-opacity-100"
-          title="Edit"
-          type="button"
-          @click="editTimestamp(timestamp)"
+    <!-- Display Type and Explanation -->
+    <td class="w-full h-12 align-top pt-1 pb-1" :title="submission.explanation">
+      <!-- Show explanation on hover -->
+      <div class="flex flex-col">
+        <p class="font-semibold capitalize">{{ typeDisplay }}</p>
+        <p
+          v-if="submission.explanation"
+          class="text-xs text-base-content text-opacity-70 mt-0.5 truncate"
         >
-          <icon-edit class="w-[1.375rem] h-[1.375rem]" />
-        </button>
-
-        <!-- Delete -->
-        <button
-          class="shrink-0 btn btn-circle btn-ghost text-base-content text-opacity-50 hover:text-error hover:text-opacity-100"
-          title="Delete"
-          type="button"
-          @click="deleteTimestamp(timestamp)"
-        >
-          <icon-close class="w-5 h-5" />
-        </button>
+          <!-- Truncate long explanation -->
+          {{ submission.explanation }}
+        </p>
       </div>
+      <!-- Editing/Deleting controls removed for now as they expect AmbiguousTimestamp -->
     </td>
   </tr>
 </template>

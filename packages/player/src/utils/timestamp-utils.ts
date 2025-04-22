@@ -6,6 +6,7 @@ import {
   TimestampType,
   TimestampTypeFragment,
 } from './api';
+export { TimestampSource }; // Re-export TimestampSource
 import { AllPreferences } from './preferences';
 
 export const UNKNOWN_TIMESTAMP_TYPE_ID = 'ae57fcf9-27b0-49a7-9a99-a91aa7518a29';

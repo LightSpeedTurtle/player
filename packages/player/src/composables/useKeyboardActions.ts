@@ -56,11 +56,13 @@ export default createSharedComposable(() => {
     advanceSmall: () => advance(2),
     advanceMedium: () => advance(5),
     advanceLarge: () => advance(90),
+    advanceSecond: () => advance(1), // Added 1-second advance
 
     rewindFrame: () => advance(-1 / 24),
     rewindSmall: () => advance(-2),
     rewindMedium: () => advance(-5),
     rewindLarge: () => advance(-90),
+    rewindSecond: () => advance(-1), // Added 1-second rewind
 
     volumeUp: () => raiseVolume(0.1),
     volumeDown: () => raiseVolume(-0.1),

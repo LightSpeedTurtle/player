@@ -16,20 +16,18 @@ window.addEventListener('keydown', (event) => {
 });
 
 // Set the episode info from env
-if (import.meta.env.VITE_SHOW_NAME)
-  getShowName().textContent = import.meta.env.VITE_SHOW_NAME;
-if (import.meta.env.VITE_EPISODE_NAME)
-  getEpisodeName().textContent = import.meta.env.VITE_EPISODE_NAME;
-if (import.meta.env.VITE_SEASON)
-  getSeason().textContent = import.meta.env.VITE_SEASON;
-if (import.meta.env.VITE_NUMBER)
-  getNumber().textContent = import.meta.env.VITE_NUMBER;
-if (import.meta.env.VITE_ABSOLUTE_NUMBER)
-  getAbsoluteNumber().textContent = import.meta.env.VITE_ABSOLUTE_NUMBER;
+if (process.env.VITE_SHOW_NAME)
+  getShowName().textContent = process.env.VITE_SHOW_NAME;
+if (process.env.VITE_EPISODE_NAME)
+  getEpisodeName().textContent = process.env.VITE_EPISODE_NAME;
+if (process.env.VITE_SEASON) getSeason().textContent = process.env.VITE_SEASON;
+if (process.env.VITE_NUMBER) getNumber().textContent = process.env.VITE_NUMBER;
+if (process.env.VITE_ABSOLUTE_NUMBER)
+  getAbsoluteNumber().textContent = process.env.VITE_ABSOLUTE_NUMBER;
 
 // Set a custom video for development from a .env file
 const videoUrl =
-  import.meta.env.VITE_VIDEO_SRC ||
+  process.env.VITE_VIDEO_SRC ||
   'https://archive.org/download/big-bunny-sample-video/SampleVideo.mp4';
 document.querySelector('video')!.src = videoUrl;
 
@@ -46,6 +44,6 @@ const player = createPlayer({
     };
   },
   fullscreenElement: '.video-container',
-  apiUrl: import.meta.env.VITE_API_URL,
+  apiUrl: process.env.VITE_API_URL,
 });
 player.mount('.video-container');

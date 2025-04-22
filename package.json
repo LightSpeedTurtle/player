@@ -6,13 +6,16 @@
     "format:check": "prettier --check .",
     "prepare": "simple-git-hooks",
     "compile": "turbo turbo:compile",
-    "build": "turbo turbo:build",
-    "test": "turbo turbo:test"
+    "build": "turbo build",
+    "test": "turbo turbo:test",
+    "clean": "git clean -fdx -e node_modules"
   },
   "devDependencies": {
+    "dotenv": "^16.5.0",
     "lint-staged": "^15.2.0",
     "prettier": "^3.1.1",
-    "simple-git-hooks": "^2.9.0"
+    "simple-git-hooks": "^2.9.0",
+    "turbo": "^2.5.0"
   },
   "pnpm": {
     "peerDependencyRules": {
@@ -30,5 +33,9 @@
   },
   "lint-staged": {
     "*": "prettier --ignore-unknown --write"
+  },
+  "packageManager": "pnpm@9.15.4+sha512.b2dc20e2fc72b3e18848459b37359a32064663e5627a51e4c74b2c29dd8e8e0491483c3abb40789cfd578bf362fb6ba8261b05f0387d76792ed6e23ea3b1b6a0",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.49.4"
   }
 }

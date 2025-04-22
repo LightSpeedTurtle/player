@@ -10,13 +10,19 @@ import ToolbarAccount from './ToolbarAccount.vue';
 import IconMdiAlertCircle from '~icons/mdi/alert-circle';
 import IconEdit from '~icons/anime-skip/edit';
 import Timeline from './Timeline.vue';
+import InPlayerTimestampTool from './InPlayerTimestampTool.vue'; // Import the new component
 import { formatTimestampInS } from '../utils/time-utils';
-
+import { ref } from 'vue'; // Import ref
 defineProps<{
   /**
    * When hidden, translate the toolbar downwards, hidding it off screen.
    */
   hidden: boolean;
+}>();
+
+// Define the event that this component can emit
+const emit = defineEmits<{
+  (e: 'request-submit', startTime: number, endTime: number): void;
 }>();
 
 const { duration, currentTime, playing } = useVideoControls();
@@ -49,6 +55,15 @@ const currentTimestampDisplay = computed(() => {
 const { pref: hideFully } = useReadonlyPreference('hideTimelineWhenMinimized');
 
 const { isEditing } = useIsEditing();
+
+// TODO: Replace this placeholder with actual role check from user profile/auth state
+const isTimestamperRole = ref(true);
+// Handler for when the tool requests submission (will trigger modal in parent)
+// TODO: Implement modal triggering logic in Player.vue or parent component
+function handleRequestSubmit(startTime: number, endTime: number) {
+  // Emit the event upwards to the parent component (Player.vue)
+  emit('request-submit', startTime, endTime);
+}
 </script>
 
 <template>
@@ -103,6 +118,13 @@ const { isEditing } = useIsEditing();
           <icon-edit v-if="!isError" class="w-3 h-3" />
         </div>
       </template>
+
+      <!-- Add In-Player Timestamp Tool -->
+      <in-player-timestamp-tool
+        class="ml-2"
+        :is-timestamper="isTimestamperRole"
+        @request-submit="handleRequestSubmit"
+      />
 
       <div class="flex-1" />
 

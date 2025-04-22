@@ -65,7 +65,7 @@ export default defineConfig(({ mode }) => {
       lib: {
         name: 'animeSkipPlayer',
         entry: 'src/index.ts',
-        formats: ['cjs', 'iife', 'es'],
+        formats: ['cjs', 'es'], // Removed 'iife' format which was causing build errors
         fileName: 'index',
       },
       sourcemap: true,

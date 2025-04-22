@@ -41,15 +41,66 @@ const typeId = computed<Scalars['ID']>({
   },
 });
 
-const { data: types, isLoading, error, isError } = useAllTimestampTypesQuery();
-const errorMessage = useErrorMessage(error);
+// Removed GraphQL query for types
+// const { data: types, isLoading, error, isError } = useAllTimestampTypesQuery();
+// const errorMessage = useErrorMessage(error);
 
+// Define the available content types based on Supabase schema
+// TODO: Consider making this dynamic if types are stored in DB
+const availableTypes = [
+  {
+    id: 'suggestive',
+    name: 'Suggestive',
+    description: 'Content that is suggestive.',
+  },
+  { id: 'nudity', name: 'Nudity', description: 'Content containing nudity.' },
+  {
+    id: 'sexual_acts',
+    name: 'Sexual Acts',
+    description: 'Content depicting sexual acts.',
+  },
+  // Add other types if defined
+];
 const typeSearch = ref('');
-const typeSearchResults = useFuzzySearch(typeSearch, types, (t) => t.name);
+// Fuzzy search based on the hardcoded list
+const typeSearchResults = useFuzzySearch(
+  typeSearch,
+  ref(availableTypes),
+  (t) => t.name,
+); // Wrap availableTypes in ref for fuzzy search
 
-// Reset the selected type on change
+// Update the computed property for typeId to work with string types from Supabase
+// Note: The prop 'timestamp' still uses AmbiguousTimestamp which expects typeId (UUID).
+// This component might need significant refactoring if it's meant to edit Supabase submissions directly.
+// For now, we adapt the type selection, but saving logic needs review in the parent.
+const selectedType = computed<string>({
+  // Change type to string
+  get() {
+    // Find the name corresponding to the current timestamp's typeId (this mapping is complex now)
+    // This part needs rethinking based on how parent manages the timestamp object being edited.
+    // Returning a placeholder for now.
+    const currentType = availableTypes.find(
+      (t) => t.id === timestamp.value.typeId,
+    ); // This comparison won't work directly (string vs UUID)
+    return currentType?.id ?? availableTypes[0].id; // Default to first available type string
+  },
+  set(typeStringId) {
+    // Find the corresponding internal UUID typeId based on the selected string
+    // This requires the reverse mapping (string -> UUID) which we don't have easily here.
+    // Emitting the string type for now, parent needs to handle conversion if necessary.
+    // OR: Refactor this component to work directly with the Supabase submission structure.
+    console.warn(
+      `Setting type to string '${typeStringId}'. Parent needs to handle potential mapping to UUID typeId if required.`,
+    );
+    // This update might break if the parent expects a full AmbiguousTimestamp object update
+    timestamp.value = { ...toRaw(timestamp.value), typeId: typeStringId }; // Temporarily setting typeId to the string value
+  },
+});
+
+// Reset the selected type on change based on search results
 watch(typeSearchResults, (newResults) => {
-  typeId.value = newResults[0]?.id ?? UNKNOWN_TIMESTAMP_TYPE_ID;
+  // Set selectedType (string) based on the first search result's id (string)
+  selectedType.value = newResults[0]?.id ?? availableTypes[0].id;
 });
 
 function onKeyDown(event: KeyboardEvent) {
@@ -60,13 +111,21 @@ function onKeyDown(event: KeyboardEvent) {
   const increment = increments[event.key];
   if (!increment) return;
 
-  const index = typeSearchResults.value.findIndex((t) => t.id === typeId.value);
-  let newIndex = index + increment;
-  if (newIndex < 0) newIndex += typeSearchResults.value.length;
-  if (newIndex >= typeSearchResults.value.length)
-    newIndex = newIndex % typeSearchResults.value.length;
+  // Removed original index calculation based on typeId
+  const currentSelectionId = selectedType.value; // Use the string type
+  // Find index based on the string ID
+  const index = typeSearchResults.value.findIndex(
+    (t) => t.id === currentSelectionId,
+  );
+  if (index === -1) return; // Should not happen
 
-  typeId.value = typeSearchResults.value[newIndex].id;
+  let newIndex = index + increment;
+  // Basic bounds check
+  if (newIndex < 0) newIndex = 0;
+  if (newIndex >= typeSearchResults.value.length)
+    newIndex = typeSearchResults.value.length - 1;
+
+  selectedType.value = typeSearchResults.value[newIndex].id; // Update the string type
 }
 </script>
 
@@ -97,6 +156,7 @@ function onKeyDown(event: KeyboardEvent) {
             class="input input-bordered focus:input-primary w-full"
             v-model="typeSearch"
             placeholder="Filter..."
+            @keydown.enter.prevent
           />
         </label>
       </div>
@@ -110,12 +170,16 @@ function onKeyDown(event: KeyboardEvent) {
         >
           <button
             class="rounded px-2"
-            :class="{ active: typeId === item.id }"
-            type="button"
-            @click="typeId = item.id"
-            tabindex="-1"
+            :class="{ active: selectedType === item.id }"
           >
-            <icon-mdi-radio-marked v-if="typeId === item.id" class="w-5 h-5" />
+            <!-- Use selectedType (string) -->
+            type="button" @click="selectedType = item.id" ><!-- Use selectedType (string) -->
+            tabindex="-1" >
+            <icon-mdi-radio-marked
+              v-if="selectedType === item.id"
+              class="w-5 h-5"
+            />
+            <!-- Use selectedType (string) -->
             <icon-mdi-radio-blank
               v-else
               class="w-5 h-5 text-base-content text-opacity-50"

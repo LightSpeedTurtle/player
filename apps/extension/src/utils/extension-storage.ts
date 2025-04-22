@@ -1,5 +1,9 @@
 import { IPlayerStorage } from '@anime-skip/player';
 
+// Define MaybePromise locally
+type MaybePromise<T> = T | Promise<T>;
+
+// Only export the local browser storage implementation
 export function createExtensionPlayerStorage(): IPlayerStorage {
   const getKey = (key: string) => `local:${key}`;
   return {

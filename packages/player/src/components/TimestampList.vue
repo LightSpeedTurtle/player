@@ -1,12 +1,26 @@
 <script lang="ts" setup>
+import { computed } from 'vue'; // Import computed
 import TimestampListItem from './TimestampListItem.vue';
 import IconPlus from '~icons/anime-skip/plus';
+import { useMySubmissions } from '../composables/useMySubmissions'; // Import the new composable directly
+// Use the new composable to fetch the user's submissions for this episode
+const {
+  data: mySubmissions,
+  isLoading,
+  error,
+  refetch: refetchMySubmissions,
+} = useMySubmissions(); // Get refetch function
+const isError = computed(() => !!error.value);
+const errorMessage = computed(
+  () => error.value?.message || 'Failed to load your submissions',
+);
 
-const timestamps = useCurrentTimestamps();
-const { isLoading, isError, error } = useFindEpisodeUrlQuery();
-const errorMessage = useErrorMessage(error);
+// Removed imports for AmbiguousTimestamp, TimestampSource, User, MySubmission
+// Removed mapping logic and related constants/maps
 
-const createTimestamp = useCreateTimestamp();
+// Use mySubmissions directly in the template
+
+// Removed createTimestamp import as the button is removed
 </script>
 
 <template>
@@ -17,31 +31,30 @@ const createTimestamp = useCreateTimestamp();
     </div>
 
     <!-- Error -->
-    <p v-else-if="isError">{{ errorMessage }}</p>
+    <!-- Use computed error message -->
+    <p v-else-if="isError" class="p-4 text-center text-error text-sm">
+      {{ errorMessage }}
+    </p>
 
     <template v-else>
       <!-- Timestamps -->
       <table class="w-full">
+        <!-- Iterate over mySubmissions directly -->
+        <!-- TODO: Update TimestampListItem to accept 'submission' prop of type MySubmission -->
         <timestamp-list-item
-          v-for="timestamp of timestamps"
-          :key="timestamp.id"
-          :timestamp="timestamp"
+          v-for="submission of mySubmissions"
+          :key="submission.id"
+          :submission="submission"
         />
       </table>
 
       <!-- Empty -->
-      <p
-        v-if="!timestamps.length"
-        class="p-4 text-center w-full text-sm opacity-50"
-      >
-        No timestmaps
+      <p v-if="!mySubmissions || !mySubmissions.length">
+        <!-- Check mySubmissions directly -->
+        class="p-4 text-center w-full text-sm opacity-50" > No timestmaps
       </p>
 
-      <!-- Add button -->
-      <button class="btn gap-2 w-full mt-2" @click="createTimestamp">
-        <icon-plus />
-        <span>Add Timestamp</span>
-      </button>
+      <!-- "Add Timestamp" button removed - use the tool in the Toolbar -->
     </template>
   </div>
 </template>

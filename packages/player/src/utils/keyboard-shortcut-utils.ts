@@ -21,7 +21,9 @@ export type KeyboardShortcutAction =
   | 'saveTimestamps'
   | 'discardChanges'
   | 'playbackRateDown'
-  | 'playbackRateUp';
+  | 'playbackRateUp'
+  | 'advanceSecond' // Added for 1-second forward seek
+  | 'rewindSecond'; // Added for 1-second backward seek
 
 export type KeyboardShortcutMap = Record<
   KeyboardShortcutAction,
@@ -45,11 +47,13 @@ export const DEFAULT_PRIMARY_KEYBOARD_SHORTCUTS: KeyboardShortcutMap = {
   previousTimestamp: 'shift+J',
   advanceFrame: 'L',
   advanceSmall: 'V',
-  advanceMedium: 'F',
+  advanceMedium: 'F', // Keep existing medium seek on F
+  advanceSecond: undefined, // No primary key for 1-second seek
   advanceLarge: 'R',
   rewindFrame: 'J',
   rewindSmall: 'X',
-  rewindMedium: 'S',
+  rewindMedium: 'S', // Keep existing medium seek on S
+  rewindSecond: undefined, // No primary key for 1-second seek
   rewindLarge: 'W',
   createTimestamp: 'K',
   saveTimestamps: 'ctrl+ENTER',
@@ -68,11 +72,13 @@ export const DEFAULT_SECONDARY_KEYBOARD_SHORTCUTS: KeyboardShortcutMap = {
   previousTimestamp: 'shift+←',
   advanceFrame: undefined,
   advanceSmall: undefined,
-  advanceMedium: '→',
+  advanceMedium: undefined, // Remove medium seek from arrow key
+  advanceSecond: '→', // Assign 1-second seek to right arrow
   advanceLarge: undefined,
   rewindFrame: undefined,
   rewindSmall: undefined,
-  rewindMedium: '←',
+  rewindMedium: undefined, // Remove medium seek from arrow key
+  rewindSecond: '←', // Assign 1-second seek to left arrow
   rewindLarge: undefined,
   createTimestamp: undefined,
   saveTimestamps: undefined,

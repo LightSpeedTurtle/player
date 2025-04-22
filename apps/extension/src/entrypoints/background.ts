@@ -1,6 +1,12 @@
-import { PlayerVisibility } from '@anime-skip/player';
+// Removed import of PlayerVisibility from '@anime-skip/player';
+// Removed Supabase client initialization from here
 
-export default defineBackground(() => {
+export default defineBackground(async () => {
+  // Make async
+  // Supabase config handling removed temporarily.
+  // To re-enable, restore the logic for reading VITE_SUPABASE_URL/VITE_SUPABASE_ANON_KEY
+  // from import.meta.env and storing them in browser.storage.local.
+
   messaging.onMessage('getTopFrameUrl', async ({ sender, data }) => {
     return messaging.sendMessage('getTopFrameUrl', data, sender.tab?.id);
   });
@@ -25,7 +31,7 @@ export default defineBackground(() => {
     try {
       await messaging.sendMessage(
         'setPlayerVisibility',
-        PlayerVisibility.Hidden,
+        2, // Use literal value for PlayerVisibility.Hidden
         tab?.id,
       );
       const res = await browser.tabs.captureVisibleTab(tab?.windowId, {
@@ -36,7 +42,7 @@ export default defineBackground(() => {
     } finally {
       await messaging.sendMessage(
         'setPlayerVisibility',
-        PlayerVisibility.Visible,
+        0, // Use literal value for PlayerVisibility.Visible
         tab?.id,
       );
     }
