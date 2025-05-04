@@ -7,6 +7,7 @@ import ToolbarButtonPlay from './ToolbarButtonPlay.vue';
 import ToolbarButtonVolume from './ToolbarButtonVolume.vue';
 import ToolbarButtonPreferences from './ToolbarButtonPreferences.vue';
 import ToolbarAccount from './ToolbarAccount.vue';
+
 import IconMdiAlertCircle from '~icons/mdi/alert-circle';
 import IconEdit from '~icons/anime-skip/edit';
 import Timeline from './Timeline.vue';
@@ -23,6 +24,7 @@ defineProps<{
 // Define the event that this component can emit
 const emit = defineEmits<{
   (e: 'request-submit', startTime: number, endTime: number): void;
+  (e: 'show-user-modal'): void;
 }>();
 
 const { duration, currentTime, playing } = useVideoControls();
@@ -61,6 +63,11 @@ const isTimestamperRole = ref(true);
 // Handler for when the tool requests submission (will trigger modal in parent)
 // TODO: Implement modal triggering logic in Player.vue or parent component
 function handleRequestSubmit(startTime: number, endTime: number) {
+  console.log(
+    '[Toolbar] Received request-submit from tool, emitting upwards:',
+    startTime,
+    endTime,
+  ); // Add log
   // Emit the event upwards to the parent component (Player.vue)
   emit('request-submit', startTime, endTime);
 }
@@ -129,7 +136,10 @@ function handleRequestSubmit(startTime: number, endTime: number) {
       <div class="flex-1" />
 
       <!-- Account -->
-      <toolbar-account class="shrink-0" />
+      <toolbar-account
+        class="shrink-0"
+        @account-icon-click="$emit('show-user-modal')"
+      />
 
       <!-- Menu -->
       <toolbar-button-preferences />

@@ -1,8 +1,36 @@
 <script lang="ts" setup>
+import { ref, onMounted } from 'vue';
+import UserInfoModal from './UserInfoModal.vue';
 import SidePanelAllPreferences from './SidePanelAllPreferences.vue';
 import SidePanelEditTimestamp from './SidePanelEditTimestamp.vue';
 import SidePanelEditTemplate from './SidePanelEditTemplate.vue';
 import SidePanelTimestamps from './SidePanelTimestamps.vue';
+
+const showUserModal = ref(false);
+
+onMounted(() => {
+  try {
+    const sessionUserInfo = JSON.parse(
+      localStorage.getItem('sessionUserInfo') || '{}',
+    );
+    if (!sessionUserInfo.phone) {
+      showUserModal.value = true;
+    }
+  } catch {
+    showUserModal.value = true;
+  }
+});
+
+function handleModalClose() {
+  const sessionUserInfo = JSON.parse(
+    localStorage.getItem('sessionUserInfo') || '{}',
+  );
+  if (!sessionUserInfo.phone) {
+    showUserModal.value = true;
+  } else {
+    location.reload();
+  }
+}
 
 const contentDiv = ref<HTMLDivElement>();
 const width = useWidthAnimation(contentDiv);
@@ -35,4 +63,5 @@ watch(width, (width) => {
       <side-panel-edit-template v-else-if="view === 'edit-template'" />
     </div>
   </div>
+  <UserInfoModal :visible="showUserModal" @close="handleModalClose" />
 </template>

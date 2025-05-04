@@ -2,6 +2,17 @@
 import { Section, buildSections } from '../utils/timestamp-utils';
 import TimelineSection from './TimelineSection.vue';
 import TimelinePreview from './TimelinePreview.vue';
+import { computed, PropType } from 'vue';
+
+const props = defineProps<{
+  userTimestamps?: Array<{ start: number; end: number; contentType: string }>;
+}>();
+const emit = defineEmits<{
+  (
+    e: 'user-timestamp-click',
+    ts: { start: number; end: number; contentType: string },
+  ): void;
+}>();
 
 const { currentTime, duration, playing } = useVideoControls();
 const intProgress = computed(() => {
@@ -33,7 +44,7 @@ const { state: preferences } = usePreferences();
 </script>
 
 <template>
-  <div ref="root" class="relative h-[9px] group cursor-pointer select-none">
+  <div ref="root" class="relative h-[18px] group cursor-pointer select-none">
     <!-- Timstamp Segments -->
     <template v-if="sections?.length">
       <timeline-section
@@ -55,6 +66,36 @@ const { state: preferences } = usePreferences();
         class="absolute left-0 top-[3px] h-[3px] bg-primary"
         :style="{ width: `${intProgress}%` }"
       />
+    </template>
+
+    <!-- User-submitted timestamp dots -->
+    <template v-if="props.userTimestamps && duration">
+      <div
+        class="absolute left-0 w-full h-3 top-[12px] flex items-center pointer-events-none"
+        style="z-index: 2"
+      >
+        <template
+          v-for="(ts, i) in props.userTimestamps"
+          :key="`${ts.start}-${ts.end}-${ts.contentType}-${i}`"
+        >
+          <div
+            class="absolute"
+            :style="{ left: `${(ts.start / duration) * 100}%` }"
+            style="top: 0"
+          >
+            <button
+              class="w-2 h-2 rounded-full bg-blue-500 border-2 border-white shadow cursor-pointer pointer-events-auto hover:scale-150 transition-transform"
+              :title="`${Math.floor(ts.start / 60)}:${String(
+                Math.floor(ts.start % 60),
+              ).padStart(2, '0')} - ${Math.floor(ts.end / 60)}:${String(
+                Math.floor(ts.end % 60),
+              ).padStart(2, '0')} | ${ts.contentType}`"
+              @click.stop="emit('user-timestamp-click', ts)"
+              style="margin-top: 0"
+            />
+          </div>
+        </template>
+      </div>
     </template>
 
     <!-- Thumb -->

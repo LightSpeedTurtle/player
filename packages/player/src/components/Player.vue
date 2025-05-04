@@ -1,5 +1,6 @@
 <script lang="ts" setup>
 import Toolbar from './Toolbar.vue';
+import UserInfoModal from './UserInfoModal.vue';
 import EpisodeInfo from './EpisodeInfo.vue';
 import SidePanel from './SidePanel.vue';
 import ReturnToPlayerButton from './ReturnToPlayerButton.vue';
@@ -10,12 +11,14 @@ import ContextMenu from './ContextMenu.vue';
 import ScreenshotPreview from './ScreenshotPreview.vue';
 import { PlayerEvent } from '../utils/PlayerEvent';
 import SubmissionModal from './SubmissionModal.vue'; // Import modal
-import type { SubmissionData } from './SubmissionModal.vue'; // Import type
+import SessionUserInfoModal from './SessionUserInfoModal.vue'; // Import session modal
+// Removed SubmissionData import as it's no longer exported or needed here
 import { useEpisodeIdentifier } from '../composables/useEpisodeIdentifier'; // Import identifier composable directly
 import { useMySubmissions } from '../composables/useMySubmissions'; // Import submissions composable directly
 // Import Supabase client and types directly
 import { createClient, User } from '@supabase/supabase-js';
 import InPlayerTimestampTool from './InPlayerTimestampTool.vue'; // Import tool to get ref
+import useEpisodeInfoQuery from '../composables/useEpisodeInfoQuery'; // Import the query composable
 
 const root = ref<HTMLDivElement>();
 // Removed inPlayerToolRef - will use internal reset in tool component
@@ -23,6 +26,21 @@ const root = ref<HTMLDivElement>();
 const isMouseActive = usePlayerMouseActive(root);
 
 const { playing, buffering } = useVideoControls();
+
+// --- In-Player Submission Modal Logic ---
+const showSubmissionModal = ref(false);
+const showSessionUserInfoModal = ref(false);
+const showUserInfoModal = ref(false); // For phone modal
+
+// Pause video when either modal is shown
+watch(
+  [showSubmissionModal, showSessionUserInfoModal],
+  ([submissionOpen, userInfoOpen]) => {
+    if (submissionOpen || userInfoOpen) {
+      playing.value = false;
+    }
+  },
+);
 
 const { view } = useView();
 const toolbarModalOpen = computed(
@@ -93,53 +111,71 @@ useCustomEventListener<PlayerEvent>(PlayerEvent.TYPE, ({ detail }) => {
 const supabase = null; // Provide a dummy value for now to avoid other errors
 // --- End Supabase Client Setup ---
 
-// --- Auth Helper (Copied from utils/supabase.ts, needed for createSubmission) ---
-const getCurrentUser = async (): Promise<User | null> => {
-  const {
-    data: { session },
-    error,
-  } = await supabase.auth.getSession();
-  if (error) {
-    console.error('Error getting Supabase session:', error.message);
-    return null;
-  }
-  return session?.user ?? null;
-};
+// --- Auth Helper (Commented out as Supabase is disabled for now) ---
+// const getCurrentUser = async (): Promise<User | null> => {
+//   const {
+//     data: { session },
+//     error,
+//     } = await supabase.auth.getSession();
+//   if (error) {
+//     console.error('Error getting Supabase session:', error.message);
+//     return null;
+//   }
+//   return session?.user ?? null;
+// };
 // --- End Auth Helper ---
 
-// --- Submission Function (Moved from utils/supabase.ts) ---
-const createSubmission = async (
-  submissionData: Omit<SubmissionData, 'submitter_user_id'>,
-): Promise<any | null> => {
-  const user = await getCurrentUser();
-  if (!user) {
-    console.error('createSubmission: No user logged in.');
-    throw new Error('You must be logged in to submit timestamps.');
-  }
-  const recordToInsert = { ...submissionData, submitter_user_id: user.id };
-  try {
-    const { data, error } = await supabase
-      .from('submissions')
-      .insert(recordToInsert)
-      .select()
-      .single();
-    if (error) {
-      console.error('Error creating submission:', error.message);
-      throw error;
-    }
-    console.log('Submission created successfully:', data);
-    return data;
-  } catch (err: any) {
-    console.error('Unexpected error in createSubmission:', err);
-    throw err;
-  }
-};
+// --- Submission Function (Commented out as Supabase is disabled for now) ---
+// const createSubmission = async (
+//   submissionData: Omit<SubmissionData, 'submitter_user_id'>,
+// ): Promise<any | null> => {
+//   const user = await getCurrentUser(); // This would also cause an error if uncommented
+//   if (!user) {
+//     console.error('createSubmission: No user logged in.');
+//     throw new Error('You must be logged in to submit timestamps.');
+//   }
+//   const recordToInsert = { ...submissionData, submitter_user_id: user.id };
+//   try {
+//     const { data, error } = await supabase
+//       .from('submissions')
+//       .insert(recordToInsert)
+//       .select()
+//       .single();
+//     if (error) {
+//       console.error('Error creating submission:', error.message);
+//       throw error;
+//     }
+//     console.log('Submission created successfully:', data);
+//     return data;
+//   } catch (err: any) {
+//     console.error('Unexpected error in createSubmission:', err);
+//     throw err;
+//   }
+// };
 // --- End Submission Function ---
 
 // --- In-Player Submission Modal Logic ---
-const showSubmissionModal = ref(false);
-const submissionError = ref<string | null>(null); // For errors during submission itself
-const isSubmitting = ref(false); // Loading state for submission
+
+const sessionUserInfo = ref<{ firstName: string; phone: string } | null>(null);
+
+// Try to load from localStorage
+const SESSION_USER_INFO_KEY = 'animeSkipSessionUserInfo';
+function loadSessionUserInfo() {
+  const raw = localStorage.getItem(SESSION_USER_INFO_KEY);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+function saveSessionUserInfo(info: { firstName: string; phone: string }) {
+  localStorage.setItem(SESSION_USER_INFO_KEY, JSON.stringify(info));
+}
+
+sessionUserInfo.value = loadSessionUserInfo();
+if (!sessionUserInfo.value) showSessionUserInfoModal.value = true;
+
 const pendingSubmissionTimes = ref<{
   startTime: number;
   endTime: number;
@@ -149,47 +185,43 @@ const { refetch: refetchMySubmissions } = useMySubmissions(); // Get refetch fun
 
 // TODO: Fetch episode info (showName, season, episode) if needed for SubmissionData
 // This might involve using useEpisodeInfoQuery or similar
-const episodeInfo = ref({
-  showName: 'Placeholder Show',
-  seasonNumber: '1',
-  episodeNumber: '1',
-}); // Placeholder
+// Fetch actual episode info using the query composable
+const {
+  data: episodeData, // Rename to avoid conflict with SubmissionData 'data' variable later
+  isLoading: isEpisodeInfoLoading, // Optional: use for loading states if needed
+  isError: isEpisodeInfoError, // Optional: use for error states if needed
+} = useEpisodeInfoQuery();
 
 // Called by event handler in Toolbar.vue (or directly if tool is moved here)
 function openSubmissionModal(startTime: number, endTime: number) {
+  if (!sessionUserInfo.value) {
+    showSessionUserInfoModal.value = true;
+    pendingSubmissionTimes.value = { startTime, endTime };
+    return;
+  }
   console.log(`Opening submission modal for ${startTime} - ${endTime}`);
   pendingSubmissionTimes.value = { startTime, endTime };
-  submissionError.value = null; // Clear previous errors
-  isSubmitting.value = false;
   showSubmissionModal.value = true;
 }
 
-async function handleModalSubmit(data: SubmissionData) {
-  console.log('Submitting data:', data);
-  isSubmitting.value = true;
-  submissionError.value = null;
-  try {
-    const result = await createSubmission(data);
-    if (result) {
-      console.log('Submission successful:', result);
-      closeAndResetModal();
-      refetchMySubmissions(); // Refetch user's submissions to update the side panel list
-      // TODO: Optionally show a success message/toast
-    } else {
-      // Should have thrown error, but handle defensively
-      submissionError.value = 'Submission failed for an unknown reason.';
-    }
-  } catch (err: any) {
-    console.error('Submission failed:', err);
-    submissionError.value =
-      err.message || 'An unexpected error occurred during submission.';
-  } finally {
-    isSubmitting.value = false;
+function handleSessionUserInfoSubmit(info: {
+  firstName: string;
+  phone: string;
+}) {
+  sessionUserInfo.value = info;
+  saveSessionUserInfo(info);
+  showSessionUserInfoModal.value = false;
+  // If a submission was pending, open the modal now
+  if (pendingSubmissionTimes.value) {
+    showSubmissionModal.value = true;
   }
 }
 
+// Removed handleModalSubmit function as the modal now handles opening the form directly
+
 function handleModalCancel() {
-  console.log('Submission modal cancelled.');
+  // Renamed from handleModalCancel to handleModalClose for clarity
+  console.log('Submission modal closed.');
   closeAndResetModal();
 }
 
@@ -203,6 +235,10 @@ function closeAndResetModal() {
 </script>
 
 <template>
+  <session-user-info-modal
+    v-if="showSessionUserInfoModal"
+    @submit="handleSessionUserInfoSubmit"
+  />
   <!-- Player -->
   <div
     v-show="visibility === PlayerVisibility.Visible"
@@ -231,6 +267,7 @@ function closeAndResetModal() {
         class="absolute bottom-0 inset-x-0"
         :hidden="isToolbarHidden"
         @request-submit="openSubmissionModal"
+        @show-user-modal="showUserInfoModal = true"
       />
 
       <manual-skip-button class="absolute bottom-20 right-4" />
@@ -251,16 +288,24 @@ function closeAndResetModal() {
 
   <!-- Submission Modal (conditionally rendered) -->
   <submission-modal
-    v-if="showSubmissionModal && pendingSubmissionTimes && episodeIdentifier"
+    v-if="
+      showSubmissionModal &&
+      pendingSubmissionTimes &&
+      episodeIdentifier &&
+      sessionUserInfo
+    "
     :start-time="pendingSubmissionTimes.startTime"
     :end-time="pendingSubmissionTimes.endTime"
     :episode-identifier="episodeIdentifier"
-    :show-name="episodeInfo.showName"
-    :season-number="episodeInfo.seasonNumber"
-    :episode-number="episodeInfo.episodeNumber"
-    :is-loading="isSubmitting"
-    :error="submissionError"
-    @submit="handleModalSubmit"
-    @cancel="handleModalCancel"
+    :show-name="episodeData?.showName"
+    :season-number="episodeData?.season?.toString()"
+    :episode-number="episodeData?.number?.toString()"
+    :first-name="sessionUserInfo.firstName"
+    :phone="sessionUserInfo.phone"
+    @close="handleModalCancel"
+  />
+  <UserInfoModal
+    :visible="showUserInfoModal"
+    @close="showUserInfoModal = false"
   />
 </template>

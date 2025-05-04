@@ -64,6 +64,11 @@ function handleMainButtonClick() {
 
 function confirmSubmission() {
   if (startTime.value !== null && endTime.value !== null) {
+    console.log(
+      '[InPlayerTimestampTool] Emitting requestSubmit:',
+      startTime.value,
+      endTime.value,
+    ); // Add log
     emits('requestSubmit', startTime.value, endTime.value);
     // Don't reset state here; wait for modal confirmation/cancellation in parent
     // resetState(); // Removed reset from here

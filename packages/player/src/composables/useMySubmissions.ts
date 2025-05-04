@@ -1,141 +1,267 @@
-import { ref, watch, shallowRef, Ref, computed } from 'vue';
-import { createClient, User } from '@supabase/supabase-js'; // Import User type directly from supabase library
-import { useEpisodeIdentifier } from './useEpisodeIdentifier'; // Corrected path if needed, assuming it's in the same directory
-// If useEpisodeIdentifier is NOT in the same directory, adjust the path accordingly.
-// For example, if it's one level up: import { useEpisodeIdentifier } from '../useEpisodeIdentifier';
+import { ref, watch, shallowRef } from 'vue';
 
-// --- Supabase Client Setup (Lazy Initialization) ---
-let supabase: ReturnType<typeof createClient> | null = null;
-
-function getSupabaseClient() {
-  if (supabase) {
-    return supabase;
-  }
-  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-  const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as
-    | string
-    | undefined;
-
-  if (supabaseUrl && supabaseAnonKey) {
-    supabase = createClient(supabaseUrl, supabaseAnonKey);
-    return supabase;
-  } else {
-    // Don't throw error here, let the calling function handle it
-    return null;
-  }
-}
-// --- End Supabase Client Setup ---
-
-// --- Submission Type ---
-interface MySubmission {
-  // Define type locally
-  id: string;
-  start_time: number;
-  end_time: number;
-  type: string;
-  explanation?: string;
-  state: string;
-  submitted_at: string;
-}
-// --- End Submission Type ---
-
-// --- Auth Helper (Copied from utils/supabase.ts, needed for currentUser ref) ---
-const getCurrentUser = async (): Promise<User | null> => {
-  const client = getSupabaseClient();
-  if (!client) {
-    // console.warn('Supabase not configured. Cannot get current user.');
-    return null; // Return null if Supabase isn't configured
-  }
-  try {
-    const {
-      data: { session },
-      error,
-    } = await client.auth.getSession();
-    if (error) {
-      console.error('Error getting Supabase session:', error.message);
-      return null;
-    }
-    return session?.user ?? null;
-  } catch (err) {
-    console.error('Unexpected error getting Supabase session:', err);
-    return null;
-  }
-};
-// --- End Auth Helper ---
+import type { MySubmission } from '../types/MySubmission';
 
 // Reactive state management for the user's submissions
-export function useMySubmissions() {
+import { useEpisodeIdentifier } from './useEpisodeIdentifier';
+
+// Accept sessionUserInfo as an argument for filtering
+import type { Ref, ShallowRef } from 'vue';
+
+export function useMySubmissions(
+  sessionUserInfo?: { phone: string },
+  episodeData?: { showName: string; season: string; number: string },
+): {
+  isLoading: Ref<boolean>;
+  error: ShallowRef<Error | null>;
+  data: ShallowRef<MySubmission[] | null>;
+  refetch: () => void;
+} {
   const isLoading = ref(false);
   const error = shallowRef<Error | null>(null);
   const data = shallowRef<MySubmission[] | null>(null);
-  const currentUser = ref<User | null>(null); // Store current user
 
   const { identifier: episodeIdentifier } = useEpisodeIdentifier();
 
-  // Fetch current user initially
-  getCurrentUser().then((user) => {
-    currentUser.value = user;
-  });
-  // TODO: Listen to auth changes to update currentUser if needed (e.g., using onAuthStateChange)
+  const GOOGLE_SHEET_API_URL =
+    'https://script.google.com/macros/s/AKfycbwdbg4IqRtlH2uq5FEaQJIdJqkkZIcNk9tGXrWWqugLXGU6n7SnWrL9ozK1NMxhuaFI/exec';
 
-  // Renamed userId parameter as it's fetched internally now via auth.uid() in the RPC function
   const execute = async (identifier: string | null) => {
-    // Check for identifier only; RPC function checks auth internally
+    console.log('[useMySubmissions] EXECUTE FUNCTION CALLED');
     if (!identifier) {
       data.value = [];
       error.value = null;
       isLoading.value = false;
-      // console.log('useMySubmissions: Skipping fetch - no identifier.');
       return;
     }
 
     isLoading.value = true;
     error.value = null;
-    // console.log(`useMySubmissions: Calling RPC for episode ${identifier}`);
-
-    const client = getSupabaseClient();
-    if (!client) {
-      // console.warn('Supabase not configured. Skipping submission fetch.');
-      data.value = []; // Set empty data if not configured
-      error.value = null;
-      isLoading.value = false;
-      return;
-    }
 
     try {
-      // Call the RPC function using the lazy client
-      const { data: result, error: rpcError } = await client.rpc(
-        'get_my_submissions',
-        { episode_id_param: identifier }, // Pass parameter to function
-      );
+      const response = await fetch(GOOGLE_SHEET_API_URL);
+      if (!response.ok) throw new Error('Failed to fetch Google Sheet data');
+      const sheetData = await response.json();
 
-      if (rpcError) {
-        // Handle RPC errors
-        throw rpcError; // Let the catch block handle it
+      // Map Google Sheet columns to app fields by index (array-of-arrays)
+      // Column mapping:
+      // 0: Timestamp, 1: Email, 2: Show/Movie, 3: First Name, 4: Phone, 5: Show Name, 6: Season/Episode,
+      // 7: Scene Start Time, 8: Scene End Time, 9: Types of Content, 10: Plot Explanation, etc.
+      function parseTime(str: any): number {
+        if (!str) return 0;
+        const parts = String(str).split(':').map(Number);
+        if (parts.length === 2) return parts[0] * 60 + parts[1];
+        if (parts.length === 3)
+          return parts[0] * 3600 + parts[1] * 60 + parts[2];
+        return Number(str) || 0;
       }
 
-      // Assuming the structure returned by RPC matches MySubmission.
-      // Add type assertion for clarity if needed, though 'as' is used below.
-      data.value = (result as MySubmission[]) || []; // Assign data or empty array
-      // console.log(`useMySubmissions: RPC returned ${data.value.length} submissions.`);
+      // Debug: log raw sheet data
+      console.log('[useMySubmissions] Raw sheetData:', sheetData);
+      let errorCount = 0;
+      let mappedSubmissions: MySubmission[] = [];
+      console.log(
+        '[useMySubmissions] sheetData type:',
+        Array.isArray(sheetData)
+          ? Array.isArray(sheetData[0])
+            ? 'array-of-arrays'
+            : 'array-of-objects'
+          : typeof sheetData,
+        sheetData,
+      );
+      if (Array.isArray(sheetData) && Array.isArray(sheetData[0])) {
+        // Assume first row is header
+        const userPhone = sessionUserInfo?.phone
+          ? String(sessionUserInfo.phone).replace(/\D/g, '')
+          : null;
+        console.log('[useMySubmissions] Filtering for user phone:', userPhone);
+        const rows = sheetData.slice(1);
+        console.log(
+          '[useMySubmissions] About to filter rows. User phone:',
+          userPhone,
+          'Rows:',
+          rows.length,
+        );
+        mappedSubmissions = rows
+          .filter((row) => {
+            console.log(
+              '[useMySubmissions] Filtering row. Raw phone:',
+              row[4],
+              'Normalized:',
+              String(row[4] || '').replace(/\D/g, ''),
+              'User:',
+              userPhone,
+            );
+
+            // Only keep rows with both start and end times
+            if (!row[7] || !row[8]) return false;
+            // User phone filtering
+            if (userPhone) {
+              const rowPhone = String(row[4] || '').replace(/\D/g, '');
+              console.log(
+                '[useMySubmissions] Row phone:',
+                row[4],
+                'Normalized:',
+                rowPhone,
+                'User:',
+                userPhone,
+              );
+              return rowPhone === userPhone;
+            }
+            return true; // If no user info, show all
+          })
+          .map((row, idx) => {
+            const startRaw = row[7] || '';
+            const endRaw = row[8] || '';
+            const startSeconds = parseTime(startRaw);
+            const endSeconds = parseTime(endRaw);
+            if (errorCount < 5) {
+              if (!row[0]) {
+                console.warn(
+                  '[useMySubmissions] Missing Timestamp ID for row',
+                  idx,
+                );
+                errorCount++;
+              }
+              if (!startRaw || startSeconds === 0) {
+                console.warn(
+                  '[useMySubmissions] Blank or malformed start time: Row:',
+                  idx,
+                );
+                errorCount++;
+              }
+              if (!endRaw || endSeconds === 0) {
+                console.warn(
+                  '[useMySubmissions] Blank or malformed end time: Row:',
+                  idx,
+                );
+                errorCount++;
+              }
+            }
+            return {
+              id: row[0] || idx,
+              start_time: startRaw,
+              start_seconds: startSeconds,
+              end_time: endRaw,
+              end_seconds: endSeconds,
+              type: String(row[9] || ''),
+              explanation: row[10] || '',
+              state: '', // No explicit Status column in your mapping, add if needed
+              submitted_at: row[0] || '',
+              show_name: row[5] || '',
+              season_episode: row[6] || '',
+            } as MySubmission;
+          });
+      } else if (Array.isArray(sheetData)) {
+        // Fallback: treat as array of objects (old logic)
+        // Always read from localStorage at runtime
+        console.log(
+          '[useMySubmissions][object] localStorage.getItem:',
+          localStorage.getItem('sessionUserInfo'),
+        );
+        const sessionUserInfo = JSON.parse(
+          localStorage.getItem('sessionUserInfo') || '{}',
+        );
+        const userPhone = sessionUserInfo?.phone
+          ? String(sessionUserInfo.phone).replace(/\D/g, '')
+          : null;
+        console.log('[useMySubmissions][object] User phone:', userPhone);
+        mappedSubmissions = (sheetData as any[])
+          .filter((row) => {
+            const startRaw = row['Scene Start Time'] || '';
+            const endRaw = row['Scene End Time'] || '';
+            if (!startRaw || !endRaw) return false;
+            // Debug: log row keys and phone value
+            console.log(
+              '[useMySubmissions][object] Row keys:',
+              Object.keys(row),
+            );
+            console.log(
+              '[useMySubmissions][object] Row phone raw:',
+              row['Phone Number'],
+              '| All row values:',
+              row,
+            );
+            if (userPhone) {
+              const rowPhone = String(row['Phone Number'] || '').replace(
+                /\D/g,
+                '',
+              );
+              console.log(
+                '[useMySubmissions][object] Row phone:',
+                row['Phone Number'],
+                'Normalized:',
+                rowPhone,
+                'User:',
+                userPhone,
+              );
+              return rowPhone === userPhone;
+            }
+            return true;
+          })
+          .map((row, idx) => {
+            const startRaw = row['Scene Start Time'] || '';
+            const endRaw = row['Scene End Time'] || '';
+            const startSeconds = parseTime(startRaw);
+            const endSeconds = parseTime(endRaw);
+            if (errorCount < 5) {
+              if (!row['Timestamp ID']) {
+                console.warn(
+                  '[useMySubmissions] Missing Timestamp ID for row',
+                  idx,
+                );
+                errorCount++;
+              }
+              if (!startRaw || startSeconds === 0) {
+                console.warn(
+                  '[useMySubmissions] Blank or malformed start time: Row:',
+                  idx,
+                );
+                errorCount++;
+              }
+              if (!endRaw || endSeconds === 0) {
+                console.warn(
+                  '[useMySubmissions] Blank or malformed end time: Row:',
+                  idx,
+                );
+                errorCount++;
+              }
+            }
+            return {
+              id: row['Timestamp ID'] || idx,
+              start_time: startRaw,
+              start_seconds: startSeconds,
+              end_time: endRaw,
+              end_seconds: endSeconds,
+              type: String(row['Type of Content'] || ''),
+              explanation:
+                row['Did anything important to the plot happen'] || '',
+              state: row['Status'] || '',
+              submitted_at: row['Timestamp Submitted'] || '',
+              show_name: row['Show Name (Full)'] || '',
+              season_episode: row['Season and Episode'] || '',
+            } as MySubmission;
+          });
+      }
+      data.value = mappedSubmissions;
+      // Debug: log filtered data
+      console.log('[useMySubmissions] Filtered submissions:', data.value);
     } catch (err: any) {
-      console.error('Error in useMySubmissions:', err);
+      console.error('Error fetching from Google Sheet:', err);
       error.value = err;
-      data.value = []; // Clear data to empty array on error
+      data.value = [];
     } finally {
       isLoading.value = false;
     }
   };
 
-  // Watch for changes in episode identifier or user ID and re-fetch
+  // Watch for changes in episode identifier and re-fetch
   watch(
-    [episodeIdentifier, currentUser], // Watch both identifier and user
-    ([newIdentifier, newUser]) => {
-      // Only need to pass identifier now, RPC handles user ID
+    episodeIdentifier,
+    (newIdentifier) => {
       execute(newIdentifier);
     },
-    { immediate: true }, // Fetch immediately when the composable is used
-    // deep: true might be needed if user object structure is complex and changes internally
+    { immediate: true },
   );
 
   // Function to manually refetch

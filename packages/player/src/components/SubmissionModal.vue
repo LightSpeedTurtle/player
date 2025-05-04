@@ -1,155 +1,277 @@
 <script lang="ts" setup>
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { formatTimestampInS } from '../utils/time-utils';
-// Removed import for ActiveTimestamp as SubmissionData is defined here
 
-// Define the structure for the data to be submitted
-// Align this with the columns in your Supabase 'submissions' table
-// (excluding auto-generated ones like id, submitted_at, submitter_user_id)
-export interface SubmissionData {
-  episode_identifier: string; // Need to get this from parent/global state
-  show_name?: string;
-  season_number?: string; // Or number
-  episode_number?: string; // Or number
-  start_time: number;
-  end_time: number;
-  type: string; // 'suggestive', 'nudity', 'sexual_acts'
-  explanation?: string;
-  // Add other relevant fields if needed for submission
-}
+// No longer exporting SubmissionData as it's internal to the pre-fill logic now
 
 const props = defineProps<{
-  startTime: number;
-  endTime: number;
-  episodeIdentifier: string; // Passed from parent
-  // Optional: Pass show/season/episode info if available
+  startTime: string | number;
+  endTime: string | number;
+  episodeIdentifier: string;
   showName?: string;
   seasonNumber?: string;
   episodeNumber?: string;
-  // Added props for loading/error state from parent
-  isLoading: boolean;
-  error: string | null;
+  firstName: string;
+  phone: string;
 }>();
 
+// Changed emit event from 'submit' to 'close'
 const emits = defineEmits<{
-  (event: 'submit', data: SubmissionData): void;
-  (event: 'cancel'): void;
+  (event: 'close'): void;
 }>();
 
-// TODO: Get these types dynamically if possible, or keep hardcoded
-const contentTypes = ['suggestive', 'nudity', 'sexual_acts'];
+// --- Google Form Configuration ---
+const googleFormBaseUrl =
+  'https://docs.google.com/forms/d/e/1FAIpQLSf2WWjjsq4W3H9u0cuFXL1KzWVJ-aOaOSczp9l0T8JnJOkhFw/viewform';
+const entryIds = {
+  showOrMovie: 'entry.2030484978',
+  titleName: 'entry.157604786',
+  sceneStartTime: 'entry.272854963',
+  sceneEndTime: 'entry.575276722',
+  contentType: 'entry.12341966', // All three content types use this entry ID
+  plotDescription: 'entry.1704199248',
+  seasonAndEpisode: 'entry.847768405',
+  firstName: 'entry.549317747',
+  phone: 'entry.1862971484',
+  // Add hidden field ID if you want to pass episodeIdentifier
+  // hiddenEpisodeIdentifier: 'ENTRY_ID_FOR_EPISODE_IDENTIFIER'
+};
+// --- End Configuration ---
 
-const selectedType = ref<string>(contentTypes[0]); // Default selection
+// TODO: Get these types dynamically if possible, or keep hardcoded to match form
+const availableContentTypes = [
+  'Suggestive Dialogue/References',
+  'Nudity (Full/Partial/Revealing Clothing)',
+  'Sexual Acts (Sexualization or Intimate physical activity)',
+]; // Should match checkbox values in Google Form
+
+// --- Form State ---
+const isShow = ref(!!(props.seasonNumber || props.episodeNumber)); // Initial guess based on props
+const selectedTypes = ref<string[]>([]);
 const explanation = ref('');
-// Removed local isLoading and error refs, use props instead
+const submissionError = ref<string | null>(null); // For errors opening the form
 
+// --- Computed Values ---
 const formattedStartTime = computed(() =>
-  formatTimestampInS(props.startTime, false),
+  typeof props.startTime === 'string'
+    ? props.startTime
+    : formatTimestampInS(props.startTime, false),
 );
 const formattedEndTime = computed(() =>
-  formatTimestampInS(props.endTime, false),
+  typeof props.endTime === 'string'
+    ? props.endTime
+    : formatTimestampInS(props.endTime, false),
+);
+const formattedSeasonEpisode = computed(() => {
+  if (!isShow.value) return '';
+  return props.seasonNumber && props.episodeNumber
+    ? `S${props.seasonNumber} E${props.episodeNumber}`
+    : props.seasonNumber || props.episodeNumber || ''; // Handle cases where only one is present
+});
+
+// Update isShow if props change (though unlikely in a modal context)
+watch(
+  () => [props.seasonNumber, props.episodeNumber],
+  ([season, episode]) => {
+    isShow.value = !!(season || episode);
+  },
 );
 
-async function submit() {
-  // isLoading state is now managed by the parent
+// --- Functions ---
+function submitToGoogleForm() {
+  submissionError.value = null; // Clear previous errors
+  try {
+    const params = new URLSearchParams();
 
-  const submissionData: SubmissionData = {
-    episode_identifier: props.episodeIdentifier,
-    show_name: props.showName,
-    season_number: props.seasonNumber,
-    episode_number: props.episodeNumber,
-    start_time: props.startTime,
-    end_time: props.endTime,
-    type: selectedType.value,
-    explanation: explanation.value.trim() || undefined, // Send undefined if empty
-  };
+    // Section 1: Show/Movie Choice
+    params.set(entryIds.showOrMovie, isShow.value ? 'Show' : 'Movie');
 
-  // Emit the data for the parent component to handle the actual Supabase call
-  emits('submit', submissionData);
+    // Section 2/3 Common Fields
+    params.set(entryIds.titleName, props.showName || '');
+    params.set(entryIds.sceneStartTime, formattedStartTime.value);
+    params.set(entryIds.sceneEndTime, formattedEndTime.value);
+    params.set(entryIds.plotDescription, explanation.value.trim() || '');
+    params.set(entryIds.firstName, props.firstName || '');
+    params.set(entryIds.phone, props.phone || '');
 
-  // Parent component should set isLoading=false and handle errors/closing the modal
+    // Content Type Checkboxes
+    selectedTypes.value.forEach((type) => {
+      // Use the specific entry ID for checkboxes. The _sentinel is usually a hidden field.
+      // Double-check your form's pre-filled link generator for the correct way to handle checkboxes.
+      // Often, each checkbox option has its own value associated with the *same* entry ID.
+      params.append(entryIds.contentType, type);
+    });
+
+    // Section 2 Only (Show)
+    if (isShow.value) {
+      params.set(entryIds.seasonAndEpisode, formattedSeasonEpisode.value);
+    }
+
+    // Optional: Add hidden fields like episodeIdentifier
+    // if (entryIds.hiddenEpisodeIdentifier && props.episodeIdentifier) {
+    //   params.set(entryIds.hiddenEpisodeIdentifier, props.episodeIdentifier);
+    // }
+
+    const prefilledUrl = `${googleFormBaseUrl}?${params.toString()}`;
+
+    console.log('Opening Google Form:', prefilledUrl);
+    window.open(prefilledUrl, '_blank'); // Open in new tab
+
+    // Close the modal immediately after opening the form tab
+    emits('close');
+  } catch (err: any) {
+    console.error('Error constructing or opening Google Form URL:', err);
+    submissionError.value =
+      'Could not open the submission form. Please try again.';
+    // Keep the modal open so the user sees the error
+  }
 }
 
 function cancel() {
-  emits('cancel');
+  emits('close'); // Emit 'close' for cancel as well
 }
 </script>
 
 <template>
-  <!-- Basic Modal Structure (using daisyUI classes assumed from other components) -->
   <div class="modal modal-open">
     <div class="modal-box relative flex flex-col gap-4">
+      <!-- Close Button -->
       <button
         type="button"
         class="btn btn-sm btn-circle absolute right-2 top-2"
         @click="cancel"
         title="Close"
-        :disabled="isLoading"
       >
-        <!-- Disable close button while loading -->✕
+        ✕
       </button>
-      <h3 class="font-bold text-lg">Confirm Timestamp Submission</h3>
+      <h3 class="font-bold text-lg">Submit Timestamp to Google Form</h3>
 
-      <!-- Display Times -->
+      <!-- Show/Movie Selection -->
+      <div class="form-control w-full">
+        <label class="label">
+          <span class="label-text">Content Type</span>
+        </label>
+        <div class="flex gap-4">
+          <label class="label cursor-pointer justify-start gap-2">
+            <input
+              type="radio"
+              name="content-type-radio"
+              class="radio radio-primary"
+              :value="true"
+              v-model="isShow"
+            />
+            <span class="label-text">Show</span>
+          </label>
+          <label class="label cursor-pointer justify-start gap-2">
+            <input
+              type="radio"
+              name="content-type-radio"
+              class="radio radio-primary"
+              :value="false"
+              v-model="isShow"
+            />
+            <span class="label-text">Movie</span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Title Display -->
+      <div class="form-control w-full">
+        <label class="label">
+          <span class="label-text">{{
+            isShow ? 'Show Name' : 'Movie Title'
+          }}</span>
+        </label>
+        <input
+          type="text"
+          :value="showName"
+          class="input input-bordered w-full"
+          disabled
+        />
+      </div>
+
+      <!-- Season/Episode Display (Conditional) -->
+      <div v-if="isShow" class="form-control w-full">
+        <label class="label">
+          <span class="label-text">Season & Episode</span>
+        </label>
+        <input
+          type="text"
+          :value="formattedSeasonEpisode"
+          class="input input-bordered w-full"
+          disabled
+        />
+      </div>
+
+      <!-- Time Display -->
       <p class="text-sm">
         Segment: <span class="font-mono">{{ formattedStartTime }}</span> -
         <span class="font-mono">{{ formattedEndTime }}</span>
       </p>
 
-      <!-- Content Type Selection -->
+      <!-- Content Type Checkboxes -->
       <div class="form-control w-full">
         <label class="label">
-          <span class="label-text">Content Type</span>
+          <span class="label-text"
+            >Type of Content (Select all that apply)</span
+          >
         </label>
-        <select
-          class="select select-bordered"
-          v-model="selectedType"
-          :disabled="isLoading"
-        >
-          <option v-for="type in contentTypes" :key="type" :value="type">
-            {{ type.replace('_', ' ') }}
-            <!-- Basic formatting -->
-          </option>
-        </select>
+        <div class="flex flex-col gap-2">
+          <label
+            v-for="type in availableContentTypes"
+            :key="type"
+            class="label cursor-pointer justify-start gap-2"
+          >
+            <input
+              type="checkbox"
+              :value="type"
+              v-model="selectedTypes"
+              class="checkbox checkbox-primary"
+            />
+            <!-- Capitalize and replace underscores for display -->
+            <span class="label-text capitalize">{{
+              type.replace(/_/g, ' ')
+            }}</span>
+          </label>
+        </div>
+        <p v-if="!selectedTypes.length" class="text-xs text-warning pt-1">
+          Please select at least one content type.
+        </p>
       </div>
 
       <!-- Explanation Textarea -->
       <div class="form-control w-full">
         <label class="label">
-          <span class="label-text">Explanation (Optional)</span>
+          <span class="label-text">Plot Description (Optional)</span>
+          <span class="label-text-alt"
+            >Did anything important happen plot-wise?</span
+          >
         </label>
         <textarea
           class="textarea textarea-bordered h-24"
-          placeholder="Why is this segment being marked?"
+          placeholder="Briefly describe any plot points during this segment."
           v-model="explanation"
-          :disabled="isLoading"
           @keydown.stop
-        >
-<!-- Prevent player shortcuts --></textarea
-        >
+        ></textarea>
       </div>
 
       <!-- Error Display -->
-      <p v-if="error" class="text-error text-sm text-center">{{ error }}</p>
+      <p v-if="submissionError" class="text-error text-sm text-center">
+        {{ submissionError }}
+      </p>
 
       <!-- Actions -->
       <div class="modal-action mt-2">
-        <button
-          type="button"
-          class="btn btn-ghost"
-          @click="cancel"
-          :disabled="isLoading"
-        >
+        <button type="button" class="btn btn-ghost" @click="cancel">
           Cancel
         </button>
         <button
           type="button"
           class="btn btn-primary"
-          :class="{ loading: isLoading }"
-          @click="submit"
-          :disabled="isLoading"
+          @click="submitToGoogleForm"
+          :disabled="!selectedTypes.length"
         >
-          Submit
+          Open Google Form
         </button>
       </div>
     </div>

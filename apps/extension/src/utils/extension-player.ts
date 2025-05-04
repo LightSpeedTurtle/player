@@ -57,8 +57,26 @@ export async function initExtensionPlayer(
     },
     async getEpisodeUrl() {
       const url = await messaging.sendMessage('getTopFrameUrl', undefined);
+      logger.log(
+        '[Crunchyroll Extension] getEpisodeUrl received url:',
+        url,
+        'type:',
+        typeof url,
+      );
       if (url == null) throw Error("Could not find episode's URL");
 
+      // Optionally, log if url is not a string
+      if (typeof url !== 'string') {
+        logger.warn(
+          '[Crunchyroll Extension] getEpisodeUrl: url is not a string!',
+          url,
+        );
+      }
+
+      logger.log(
+        '[Crunchyroll Extension] getEpisodeUrl: transforming url with transformServiceUrl',
+        url,
+      );
       const episodeIdentifier =
         options.transformServiceUrl?.(url) ?? stripUrl(url);
       // Set the shared state *after* getting the identifier

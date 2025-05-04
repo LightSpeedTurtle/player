@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { ref, onMounted, onUnmounted } from 'vue';
+import { ref, onMounted, onUnmounted, defineEmits, defineProps } from 'vue';
 import ToolbarModal from './ToolbarModal.vue';
 import LoginForm from './LoginForm.vue';
 import SignupForm from './SignupForm.vue'; // Import SignupForm
@@ -8,6 +8,11 @@ import AccountMenu from './AccountMenu.vue';
 // Removed import of supabase, onAuthStateChange from '@anime-skip/player'
 import { createClient, User, Subscription } from '@supabase/supabase-js'; // Import createClient, User, Subscription
 import useViewOperationCompleted from '../composables/useViewOperationCompleted'; // Changed to default import
+
+// Emit event to parent when account/profile is clicked
+const emit = defineEmits(['account-icon-click']);
+// Allow parent to control modal display if desired
+const props = defineProps<{ externalModal?: boolean }>();
 
 // --- Supabase Client Setup (Copied from Player.vue) ---
 // TODO: Ensure this is only initialized once using a singleton pattern or provide/inject
@@ -26,32 +31,32 @@ const currentUser = ref<User | null>(null);
 const currentView = ref<'login' | 'signup' | 'menu'>('login'); // Default to login view
 let authSubscription: Subscription | null = null;
 
-// Fetch initial user state and subscribe to changes
-onMounted(async () => {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  currentUser.value = user;
-  currentView.value = user ? 'menu' : 'login'; // Show menu if logged in, else login
+// // Fetch initial user state and subscribe to changes
+// onMounted(async () => {
+//   const {
+//     data: { user },
+//   } = await supabase.auth.getUser();
+//   currentUser.value = user;
+//   currentView.value = user ? 'menu' : 'login'; // Show menu if logged in, else login
 
-  const { data } = supabase.auth.onAuthStateChange((event, session) => {
-    console.log('ToolbarAccount Auth Event:', event);
-    currentUser.value = session?.user ?? null;
-    // Switch view based on auth state
-    if (event === 'SIGNED_IN') {
-      currentView.value = 'menu';
-      loginCompleted(); // Close modal on sign in
-    } else if (event === 'SIGNED_OUT') {
-      currentView.value = 'login';
-    }
-  });
-  authSubscription = data.subscription;
-});
+//   const { data } = supabase.auth.onAuthStateChange((event, session) => {
+//     console.log('ToolbarAccount Auth Event:', event);
+//     currentUser.value = session?.user ?? null;
+//     // Switch view based on auth state
+//     if (event === 'SIGNED_IN') {
+//       currentView.value = 'menu';
+//       loginCompleted(); // Close modal on sign in
+//     } else if (event === 'SIGNED_OUT') {
+//       currentView.value = 'login';
+//     }
+//   });
+//   authSubscription = data.subscription;
+// });
 
-// Unsubscribe when component is unmounted
-onUnmounted(() => {
-  authSubscription?.unsubscribe();
-});
+// // Unsubscribe when component is unmounted
+// onUnmounted(() => {
+//   authSubscription?.unsubscribe();
+// });
 
 // Function to switch between login/signup views
 function showLogin() {
@@ -68,7 +73,17 @@ const loginCompleted = useViewOperationCompleted('account'); // Keep this line
   <toolbar-modal view="account">
     <!-- Button -->
     <template #button="{ toggle }">
-      <div class="tooltip" data-tip="Account" @click="toggle">
+      <div
+        class="tooltip"
+        data-tip="Account"
+        @click="
+          () => {
+            emit('account-icon-click');
+            toggle();
+          }
+        "
+      >
+        <!-- When clicked, emit to parent and toggle modal -->
         <profile-image
           class="w-[28px] h-[28px] m-[11px] cursor-pointer transition-all ring-base-content text-base-100 active:text-opacity-70 ring-opacity-30 ring-0 hover:ring-4 active:ring-2"
         />

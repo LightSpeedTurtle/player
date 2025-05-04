@@ -1,19 +1,31 @@
 <script lang="ts" setup>
-import { computed } from 'vue'; // Import computed
 import TimestampListItem from './TimestampListItem.vue';
 import IconPlus from '~icons/anime-skip/plus';
-import { useMySubmissions } from '../composables/useMySubmissions'; // Import the new composable directly
-// Use the new composable to fetch the user's submissions for this episode
-const {
-  data: mySubmissions,
-  isLoading,
-  error,
-  refetch: refetchMySubmissions,
-} = useMySubmissions(); // Get refetch function
-const isError = computed(() => !!error.value);
-const errorMessage = computed(
-  () => error.value?.message || 'Failed to load your submissions',
+
+// Define a mock type for mySubmissions
+// This should match the temporary MySubmission type in TimestampListItem.vue
+import type { MySubmission } from '../types/MySubmission';
+
+import { computed } from 'vue';
+import { useMySubmissions } from '../composables/useMySubmissions';
+import useEpisodeInfoQuery from '../composables/useEpisodeInfoQuery';
+
+// Get session user info from Player.vue or localStorage
+const sessionUserInfo = JSON.parse(
+  localStorage.getItem('sessionUserInfo') || '{}',
 );
+
+// Get episode info
+const { data: episodeData } = useEpisodeInfoQuery();
+
+const { data, isLoading, error } = useMySubmissions(sessionUserInfo, {
+  showName: episodeData.value?.showName ?? '',
+  season: episodeData.value?.season ?? '',
+  number: episodeData.value?.number ?? '',
+});
+const mySubmissions = computed(() => data.value ?? []);
+const isError = computed(() => !!error.value);
+const errorMessage = computed(() => error.value?.message || '');
 
 // Removed imports for AmbiguousTimestamp, TimestampSource, User, MySubmission
 // Removed mapping logic and related constants/maps
@@ -39,22 +51,27 @@ const errorMessage = computed(
     <template v-else>
       <!-- Timestamps -->
       <table class="w-full">
-        <!-- Iterate over mySubmissions directly -->
-        <!-- TODO: Update TimestampListItem to accept 'submission' prop of type MySubmission -->
-        <timestamp-list-item
-          v-for="submission of mySubmissions"
-          :key="submission.id"
-          :submission="submission"
-        />
+        <thead>
+          <tr>
+            <th class="text-left">Season/Episode</th>
+            <th class="text-left">Start - End</th>
+            <th class="text-left">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          <timestamp-list-item
+            v-for="submission of mySubmissions"
+            :key="submission.id"
+            :submission="submission"
+          />
+        </tbody>
       </table>
-
-      <!-- Empty -->
-      <p v-if="!mySubmissions || !mySubmissions.length">
-        <!-- Check mySubmissions directly -->
-        class="p-4 text-center w-full text-sm opacity-50" > No timestmaps
+      <p
+        v-if="!mySubmissions || !mySubmissions.length"
+        class="p-4 text-center w-full text-sm opacity-50"
+      >
+        No timestamps
       </p>
-
-      <!-- "Add Timestamp" button removed - use the tool in the Toolbar -->
     </template>
   </div>
 </template>
