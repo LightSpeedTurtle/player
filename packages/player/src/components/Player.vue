@@ -176,6 +176,17 @@ function saveSessionUserInfo(info: { firstName: string; phone: string }) {
 sessionUserInfo.value = loadSessionUserInfo();
 if (!sessionUserInfo.value) showSessionUserInfoModal.value = true;
 
+// Watch for changes to user info in localStorage and update sessionUserInfo
+watch(
+  () => showUserInfoModal.value,
+  (visible) => {
+    if (!visible) {
+      // Modal just closed, reload user info
+      sessionUserInfo.value = loadSessionUserInfo();
+    }
+  },
+);
+
 const pendingSubmissionTimes = ref<{
   startTime: number;
   endTime: number;
@@ -266,6 +277,7 @@ function closeAndResetModal() {
       <toolbar
         class="absolute bottom-0 inset-x-0"
         :hidden="isToolbarHidden"
+        :session-user-info="sessionUserInfo"
         @request-submit="openSubmissionModal"
         @show-user-modal="showUserInfoModal = true"
       />

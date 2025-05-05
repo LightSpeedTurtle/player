@@ -10,7 +10,18 @@
       >
         ✕
       </button>
-      <h3 class="font-bold text-lg">Enter Your Phone Number</h3>
+      <h3 class="font-bold text-lg">Enter Your Info</h3>
+      <div class="form-control w-full">
+        <label class="label">
+          <span class="label-text">First Name</span>
+        </label>
+        <input
+          v-model="firstName"
+          placeholder="First Name"
+          class="input input-bordered w-full"
+          @keyup.enter="save"
+        />
+      </div>
       <div class="form-control w-full">
         <label class="label">
           <span class="label-text">Phone Number</span>
@@ -43,31 +54,38 @@ const props = defineProps<{ visible: boolean }>();
 const emit = defineEmits(['close']);
 
 // Phone number input (digits only)
+const firstName = ref('');
 const phone = ref('');
 
 /**
- * Save the phone number to localStorage if valid, then emit close.
- * Only digits are allowed (7-15 digits).
+ * Save the user info to localStorage if valid, then emit close.
+ * First name must not be empty, phone must be digits only (7-15 digits).
  */
 function save() {
-  // Validate phone number (digits only, length 7-15)
   const normalized = phone.value.replace(/\D/g, '');
-  if (normalized && /^\d{7,15}$/.test(normalized)) {
-    localStorage.setItem(
-      'sessionUserInfo',
-      JSON.stringify({ phone: normalized }),
-    );
-    emit('close'); // Notify parent to re-check user info
-  } else {
-    alert('Please enter a valid phone number (digits only, 7-15 digits).');
+  if (!firstName.value.trim()) {
+    alert('Please enter your first name.');
+    return;
   }
+  if (!normalized || !/^\d{7,15}$/.test(normalized)) {
+    alert('Please enter a valid phone number (digits only, 7-15 digits).');
+    return;
+  }
+  localStorage.setItem(
+    'animeSkipSessionUserInfo',
+    JSON.stringify({ firstName: firstName.value.trim(), phone: normalized }),
+  );
+  emit('close');
 }
 
-// Reset phone input when modal is shown
+// Reset inputs when modal is shown
 watch(
   () => props.visible,
   (val) => {
-    if (val) phone.value = '';
+    if (val) {
+      firstName.value = '';
+      phone.value = '';
+    }
   },
 );
 </script>

@@ -13,13 +13,32 @@ import IconEdit from '~icons/anime-skip/edit';
 import Timeline from './Timeline.vue';
 import InPlayerTimestampTool from './InPlayerTimestampTool.vue'; // Import the new component
 import { formatTimestampInS } from '../utils/time-utils';
-import { ref } from 'vue'; // Import ref
-defineProps<{
-  /**
-   * When hidden, translate the toolbar downwards, hidding it off screen.
-   */
+import { ref, computed } from 'vue';
+
+// defineProps<{
+//   /**
+//    * When hidden, translate the toolbar downwards, hidding it off screen.
+//    */
+//   hidden: boolean;
+//   /**
+//    * Session user info, as { firstName, phone }
+//    */
+//   sessionUserInfo?: { firstName: string; phone: string } | null;
+// }>();
+
+const props = defineProps<{
   hidden: boolean;
+  sessionUserInfo?: { firstName: string; phone: string } | null;
 }>();
+const userInfoDisplay = computed(() => {
+  if (
+    !props.sessionUserInfo ||
+    !props.sessionUserInfo.firstName ||
+    !props.sessionUserInfo.phone
+  )
+    return '';
+  return `${props.sessionUserInfo.firstName} • ${props.sessionUserInfo.phone}`;
+});
 
 // Define the event that this component can emit
 const emit = defineEmits<{
@@ -136,11 +155,19 @@ function handleRequestSubmit(startTime: number, endTime: number) {
 
       <div class="flex-1" />
 
-      <!-- Account -->
-      <toolbar-account
-        class="shrink-0"
-        @account-icon-click="$emit('show-user-modal')"
-      />
+      <!-- Account + User Info -->
+      <div class="flex items-center gap-2">
+        <toolbar-account
+          class="shrink-0"
+          @account-icon-click="$emit('show-user-modal')"
+        />
+        <span
+          v-if="userInfoDisplay"
+          class="text-xs font-semibold text-primary-content bg-primary bg-opacity-70 rounded px-2 py-1 ml-0.5"
+        >
+          {{ userInfoDisplay }}
+        </span>
+      </div>
 
       <!-- Menu -->
       <toolbar-button-preferences />

@@ -79,6 +79,8 @@ watch(
 
 // --- Functions ---
 function submitToGoogleForm() {
+  // Only use sessionUserInfo (props.firstName, props.phone) for prefill
+
   submissionError.value = null; // Clear previous errors
   try {
     const params = new URLSearchParams();
