@@ -7,6 +7,7 @@ import IconPlus from '~icons/anime-skip/plus';
 import type { MySubmission } from '../types/MySubmission';
 
 import { computed } from 'vue';
+import useVideoControls from '../composables/useVideoControls';
 import { useMySubmissions } from '../composables/useMySubmissions';
 import useEpisodeInfoQuery from '../composables/useEpisodeInfoQuery';
 
@@ -18,10 +19,13 @@ const sessionUserInfo = JSON.parse(
 // Get episode info
 const { data: episodeData } = useEpisodeInfoQuery();
 
-const { data, isLoading, error } = useMySubmissions(sessionUserInfo, {
-  showName: episodeData.value?.showName ?? '',
-  season: episodeData.value?.season ?? '',
-  number: episodeData.value?.number ?? '',
+const { data, isLoading, error } = useMySubmissions({
+  sessionUserInfo,
+  episodeData: {
+    showName: episodeData.value?.showName ?? '',
+    season: episodeData.value?.season ?? '',
+    number: episodeData.value?.number ?? '',
+  },
 });
 const mySubmissions = computed(() => data.value ?? []);
 const isError = computed(() => !!error.value);
@@ -31,6 +35,7 @@ const errorMessage = computed(() => error.value?.message || '');
 // Removed mapping logic and related constants/maps
 
 // Use mySubmissions directly in the template
+const { currentTime } = useVideoControls();
 
 // Removed createTimestamp import as the button is removed
 </script>
@@ -51,18 +56,12 @@ const errorMessage = computed(() => error.value?.message || '');
     <template v-else>
       <!-- Timestamps -->
       <table class="w-full">
-        <thead>
-          <tr>
-            <th class="text-left">Season/Episode</th>
-            <th class="text-left">Start - End</th>
-            <th class="text-left">Status</th>
-          </tr>
-        </thead>
         <tbody>
           <timestamp-list-item
             v-for="submission of mySubmissions"
             :key="submission.id"
             :submission="submission"
+            :current-time="currentTime"
           />
         </tbody>
       </table>

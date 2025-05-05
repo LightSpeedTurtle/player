@@ -37,7 +37,7 @@ const isLoginWarningVisible = computed(() => isEditing.value && !auth.value);
 
 <template>
   <side-panel-layout class="w-72 lg:w-80" @form-submit="saveChanges">
-    <template #title>Edit Episode</template>
+    <template #title>View/Edit This Episode's Timestamps</template>
 
     <!-- Timestamps -->
     <template #content>

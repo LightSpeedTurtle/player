@@ -10,4 +10,5 @@ export interface MySubmission {
   submitted_at: string;
   show_name: string;
   season_episode: string;
+  edit_link?: string; // Google Sheet edit link (Column T)
 }

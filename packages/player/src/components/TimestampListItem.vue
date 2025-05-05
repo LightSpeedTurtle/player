@@ -9,19 +9,46 @@ import type { MySubmission } from '../types/MySubmission';
 
 const props = defineProps<{
   submission: MySubmission;
+  currentTime: number;
 }>();
 
 // Use raw string for display
 const startTime = computed(() => props.submission.start_time || '');
 const endTime = computed(() => props.submission.end_time || '');
+
+// Compute if this timestamp is active (highlighted)
+const isActive = computed(() => {
+  return (
+    typeof props.currentTime === 'number' &&
+    props.currentTime >= (props.submission.start_seconds || 0) &&
+    props.currentTime <= (props.submission.end_seconds || 0)
+  );
+});
 const typeDisplay = computed(() =>
   String(props.submission.type ?? '').replace('_', ' '),
 ); // Guaranteed safe formatting
+
+// Helper to format season/episode as 'Sx Ex' from string or fallback
+function formatSeasonEpisode(seasonEpisode: string): string {
+  if (!seasonEpisode) return '';
+  // Try to extract numbers
+  const match = seasonEpisode.match(/(\d+)[^\d]+(\d+)/);
+  if (match) {
+    return `S${match[1]} E${match[2]}`;
+  }
+  return seasonEpisode;
+}
 
 const { currentTime } = useVideoControls();
 function goToTimestamp() {
   // Use start_seconds for seeking, but display start_time (string)
   currentTime.value = props.submission.start_seconds || 0;
+}
+
+function editSubmission() {
+  if (props.submission.edit_link) {
+    window.open(props.submission.edit_link, '_blank');
+  }
 }
 
 // Removed composables related to editing/deleting AmbiguousTimestamp
@@ -40,80 +67,38 @@ function clearHovered() {
 </script>
 
 <template>
-  <tr
+  <button
+    type="button"
+    :class="[
+      'w-full flex items-center justify-between rounded-lg px-4 py-3 mb-2 shadow-sm transition group cursor-pointer',
+      isActive
+        ? 'btn-primary border-primary text-primary-content font-bold'
+        : 'bg-neutral-800 hover:bg-neutral-700',
+    ]"
+    @click="goToTimestamp"
     @mouseenter="setHovered"
     @mousemove="setHovered"
     @mouseleave="clearHovered"
   >
-    <td>
-      <span class="font-mono">{{ submission.season_episode }}</span>
-    </td>
-    <td>
-      <span class="font-mono">{{ startTime }} - {{ endTime }}</span>
-    </td>
-    <td>
-      <span
-        class="uppercase text-xs font-bold"
-        :class="{
-          'text-warning': submission.state === 'pending',
-          'text-success': submission.state === 'approved',
-          'text-error': submission.state === 'rejected',
-          'text-base-content text-opacity-60':
-            submission.state !== 'pending' &&
-            submission.state !== 'approved' &&
-            submission.state !== 'rejected',
-        }"
-      >
-        {{
-          submission.state.charAt(0).toUpperCase() + submission.state.slice(1)
-        }}
+    <div class="flex flex-col items-start gap-0.5 text-left">
+      <span class="font-mono text-xs text-base-content/70 tracking-wide">
+        {{ formatSeasonEpisode(submission.season_episode) }}
       </span>
-    </td>
-
-    <!-- Display Type and Explanation -->
-    <td
-      class="h-12 w-full"
-      :title="`${startTime} – ${endTime} | ${typeDisplay}
-${
-  submission.explanation ? 'Note: ' + submission.explanation + '\n' : ''
-}Status: ${submission.state}`"
+      <span class="font-mono text-base font-bold leading-5">
+        {{ startTime }} – {{ endTime }}
+      </span>
+      <span class="text-xs text-base-content/70 mt-0.5">
+        {{ typeDisplay }}
+      </span>
+    </div>
+    <button
+      v-if="submission.edit_link"
+      class="ml-4 opacity-60 group-hover:opacity-100 transition p-1 rounded hover:bg-neutral-600"
+      title="Edit this timestamp"
+      @click.stop="editSubmission"
+      tabindex="-1"
     >
-      <div
-        class="pl-2 pr-4 cursor-pointer flex flex-col items-start gap-0.5"
-        @click="goToTimestamp"
-      >
-        <!-- Start/End Time -->
-        <div class="flex items-center gap-2">
-          <span class="text-sm font-mono">{{ startTime }} – {{ endTime }}</span>
-          <span class="ml-auto text-xs capitalize">{{ typeDisplay }}</span>
-        </div>
-        <!-- Status -->
-        <div class="flex items-center gap-2 mt-1">
-          <span
-            class="text-xs font-bold"
-            :class="{
-              'text-success': submission.state === 'approved',
-              'text-warning': submission.state === 'pending',
-              'text-error': submission.state === 'rejected',
-              'text-base-content text-opacity-60':
-                submission.state !== 'pending' &&
-                submission.state !== 'approved' &&
-                submission.state !== 'rejected',
-            }"
-          >
-            {{
-              submission.state.charAt(0).toUpperCase() +
-              submission.state.slice(1)
-            }}
-          </span>
-          <span
-            v-if="submission.explanation"
-            class="text-xs text-base-content text-opacity-70 truncate ml-2"
-          >
-            <i>({{ submission.explanation }})</i>
-          </span>
-        </div>
-      </div>
-    </td>
-  </tr>
+      <IconEdit class="w-4 h-4" />
+    </button>
+  </button>
 </template>

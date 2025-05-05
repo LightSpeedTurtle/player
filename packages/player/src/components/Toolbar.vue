@@ -50,7 +50,8 @@ const { isLoading, isError } = useEpisodeInfoQuery();
 const currentTimestampDisplay = computed(() => {
   if (isLoading.value) return 'Loading...';
   if (isError.value) return 'Error';
-  if (currentTimestamps.value.length === 0) return 'No timestamps';
+  if (currentTimestamps.value.length === 0)
+    return "See This Episode's Timestamps";
   return currentTimestampType.value?.name ?? 'Unknown';
 });
 

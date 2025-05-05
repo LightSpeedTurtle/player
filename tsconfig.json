@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "useDefineForClassFields": true,
+    "module": "ESNext",
+    "moduleResolution": "Bundler", // Changed from Node to Bundler
+    "strict": true,
+    "jsx": "preserve",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "lib": ["ESNext", "DOM"],
+    "skipLibCheck": true,
+    "types": ["vite/client", "vue"], // Add Vue types
+    "outDir": "./dist",
+    "declaration": true,
+    "rootDir": "src" // Add rootDir to resolve ambiguity
+  },
+  "references": [{ "path": "./tsconfig.node.json" }],
+  "include": ["src/**/*.ts", "src/**/*.d.ts", "src/**/*.tsx", "src/**/*.vue"], // Explicitly include .vue files
+  "exclude": ["node_modules", "dist"] // Good practice to exclude these
+}

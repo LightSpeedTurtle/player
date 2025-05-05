@@ -3,6 +3,7 @@ import { SECOND } from '../utils/time';
 /**
  * Return an object containing the video element's current state as refs which can be set.
  */
+// Add seek to video controls for use in timestamp tools
 export default createSharedComposable(() => {
   const video = useVideoElement();
 
@@ -150,6 +151,15 @@ export default createSharedComposable(() => {
     video.value.muted = muted.value;
   });
 
+  function seek(newTime: number) {
+    if (!video.value) return;
+    // Clamp to [0, duration]
+    const dur = getCurrentDuration();
+    let t = Math.max(0, newTime);
+    if (typeof dur === 'number') t = Math.min(t, dur);
+    video.value.currentTime = t;
+  }
+
   return {
     playing,
     volume,
@@ -159,5 +169,6 @@ export default createSharedComposable(() => {
     playbackRate,
     buffering: readonly(useDebounce(buffering, 0.1 * SECOND)),
     duration: readonly(duration),
+    seek,
   };
 });

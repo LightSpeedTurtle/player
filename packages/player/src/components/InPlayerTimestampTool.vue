@@ -4,6 +4,8 @@ import IconMarkStart from '~icons/mdi/flag-plus-outline';
 import IconMarkEnd from '~icons/mdi/flag-checkered';
 import IconConfirm from '~icons/mdi/check';
 import IconCancel from '~icons/mdi/close';
+import IconArrowLeft from '~icons/mdi/arrow-left';
+import IconArrowRight from '~icons/mdi/arrow-right';
 import { formatTimestampInS } from '../utils/time-utils';
 
 const props = defineProps<{
@@ -14,7 +16,7 @@ const emits = defineEmits<{
   (event: 'requestSubmit', startTime: number, endTime: number): void;
 }>();
 
-const { currentTime } = useVideoControls();
+const { currentTime, seek } = useVideoControls();
 
 type MarkingState = 'idle' | 'markingEnd' | 'confirming';
 const markingState = ref<MarkingState>('idle');
@@ -97,6 +99,31 @@ function resetState() {
 
 <template>
   <div v-if="isTimestamper" class="flex items-center gap-2">
+    <!-- Arrow enclosure -->
+    <div
+      class="flex bg-base-200 rounded-lg overflow-hidden border border-base-content border-opacity-10"
+    >
+      <button
+        type="button"
+        class="btn btn-xs btn-ghost rounded-none border-r border-base-content border-opacity-10"
+        @click="seek(currentTime - 1)"
+        :disabled="currentTime <= 0"
+        title="Seek backward 1 second"
+        aria-label="Seek backward 1 second"
+      >
+        <icon-arrow-left class="w-4 h-4" />
+      </button>
+      <button
+        type="button"
+        class="btn btn-xs btn-ghost rounded-none"
+        @click="seek(currentTime + 1)"
+        title="Seek forward 1 second"
+        aria-label="Seek forward 1 second"
+      >
+        <icon-arrow-right class="w-4 h-4" />
+      </button>
+    </div>
+
     <!-- Main Mark Start/End Button -->
     <button
       v-if="markingState !== 'confirming'"
