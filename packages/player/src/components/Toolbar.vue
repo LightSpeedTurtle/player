@@ -15,29 +15,16 @@ import InPlayerTimestampTool from './InPlayerTimestampTool.vue'; // Import the n
 import { formatTimestampInS } from '../utils/time-utils';
 import { ref, computed } from 'vue';
 
-// defineProps<{
-//   /**
-//    * When hidden, translate the toolbar downwards, hidding it off screen.
-//    */
-//   hidden: boolean;
-//   /**
-//    * Session user info, as { firstName, phone }
-//    */
-//   sessionUserInfo?: { firstName: string; phone: string } | null;
-// }>();
+import { useSessionUserInfo } from '../composables/useSessionUserInfo';
+const { userInfo } = useSessionUserInfo();
 
 const props = defineProps<{
   hidden: boolean;
-  sessionUserInfo?: { firstName: string; phone: string } | null;
 }>();
 const userInfoDisplay = computed(() => {
-  if (
-    !props.sessionUserInfo ||
-    !props.sessionUserInfo.firstName ||
-    !props.sessionUserInfo.phone
-  )
+  if (!userInfo.value || !userInfo.value.firstName || !userInfo.value.phone)
     return '';
-  return `${props.sessionUserInfo.firstName} • ${props.sessionUserInfo.phone}`;
+  return `${userInfo.value.firstName} • ${userInfo.value.phone}`;
 });
 
 // Define the event that this component can emit

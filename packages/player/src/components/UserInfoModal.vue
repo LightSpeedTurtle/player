@@ -39,6 +39,7 @@
 </template>
 
 <script setup lang="ts">
+import { useSessionUserInfo } from '../composables/useSessionUserInfo';
 /**
  * UserInfoModal.vue
  *
@@ -54,8 +55,10 @@ const props = defineProps<{ visible: boolean }>();
 const emit = defineEmits(['close']);
 
 // Phone number input (digits only)
+const { userInfo, saveUserInfo } = useSessionUserInfo();
 const firstName = ref('');
 const phone = ref('');
+// All user info access and updates should use the composable
 
 /**
  * Save the user info to localStorage if valid, then emit close.
@@ -71,20 +74,21 @@ function save() {
     alert('Please enter a valid phone number (digits only, 7-15 digits).');
     return;
   }
-  localStorage.setItem(
-    'animeSkipSessionUserInfo',
-    JSON.stringify({ firstName: firstName.value.trim(), phone: normalized }),
-  );
+  console.debug('[DEBUG] Saving user info from UserInfoModal (composable):', {
+    firstName: firstName.value.trim(),
+    phone: normalized,
+  });
+  saveUserInfo({ firstName: firstName.value.trim(), phone: normalized });
   emit('close');
 }
 
-// Reset inputs when modal is shown
+// Pre-fill inputs when modal is shown
 watch(
   () => props.visible,
   (val) => {
     if (val) {
-      firstName.value = '';
-      phone.value = '';
+      firstName.value = userInfo.value?.firstName || '';
+      phone.value = userInfo.value?.phone || '';
     }
   },
 );

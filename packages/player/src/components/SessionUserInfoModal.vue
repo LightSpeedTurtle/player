@@ -5,6 +5,8 @@ const emits = defineEmits<{
   (event: 'submit', info: { firstName: string; phone: string }): void;
 }>();
 
+import { useSessionUserInfo } from '../composables/useSessionUserInfo';
+const { userInfo, saveUserInfo } = useSessionUserInfo();
 const firstName = ref('');
 const phone = ref('');
 const error = ref('');

@@ -10,22 +10,22 @@ import { computed } from 'vue';
 import useVideoControls from '../composables/useVideoControls';
 import { useMySubmissions } from '../composables/useMySubmissions';
 import useEpisodeInfoQuery from '../composables/useEpisodeInfoQuery';
+import { useSessionUserInfo } from '../composables/useSessionUserInfo';
 
 // Get session user info from Player.vue or localStorage
-const sessionUserInfo = JSON.parse(
-  localStorage.getItem('sessionUserInfo') || '{}',
-);
+const { userInfo } = useSessionUserInfo();
 
 // Get episode info
 const { data: episodeData } = useEpisodeInfoQuery();
 
+const normalizedEpisodeData = computed(() => ({
+  showName: episodeData.value?.showName ?? '',
+  season: episodeData.value?.season ?? '',
+  number: episodeData.value?.number ?? '',
+}));
+
 const { data, isLoading, error } = useMySubmissions({
-  sessionUserInfo,
-  episodeData: {
-    showName: episodeData.value?.showName ?? '',
-    season: episodeData.value?.season ?? '',
-    number: episodeData.value?.number ?? '',
-  },
+  episodeData: normalizedEpisodeData,
 });
 const mySubmissions = computed(() => data.value ?? []);
 const isError = computed(() => !!error.value);

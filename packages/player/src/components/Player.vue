@@ -15,6 +15,7 @@ import SessionUserInfoModal from './SessionUserInfoModal.vue'; // Import session
 // Removed SubmissionData import as it's no longer exported or needed here
 import { useEpisodeIdentifier } from '../composables/useEpisodeIdentifier'; // Import identifier composable directly
 import { useMySubmissions } from '../composables/useMySubmissions'; // Import submissions composable directly
+import { Ref } from 'vue';
 // Import Supabase client and types directly
 import { createClient, User } from '@supabase/supabase-js';
 import InPlayerTimestampTool from './InPlayerTimestampTool.vue'; // Import tool to get ref
@@ -156,35 +157,20 @@ const supabase = null; // Provide a dummy value for now to avoid other errors
 
 // --- In-Player Submission Modal Logic ---
 
-const sessionUserInfo = ref<{ firstName: string; phone: string } | null>(null);
+import { useSessionUserInfo } from '../composables/useSessionUserInfo';
+const { userInfo, saveUserInfo } = useSessionUserInfo();
 
-// Try to load from localStorage
-const SESSION_USER_INFO_KEY = 'animeSkipSessionUserInfo';
-function loadSessionUserInfo() {
-  const raw = localStorage.getItem(SESSION_USER_INFO_KEY);
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
-}
-function saveSessionUserInfo(info: { firstName: string; phone: string }) {
-  localStorage.setItem(SESSION_USER_INFO_KEY, JSON.stringify(info));
+if (!userInfo.value) {
+  showSessionUserInfoModal.value = true;
 }
 
-sessionUserInfo.value = loadSessionUserInfo();
-if (!sessionUserInfo.value) showSessionUserInfoModal.value = true;
-
-// Watch for changes to user info in localStorage and update sessionUserInfo
+// Watch for changes to userInfo for debugging
 watch(
-  () => showUserInfoModal.value,
-  (visible) => {
-    if (!visible) {
-      // Modal just closed, reload user info
-      sessionUserInfo.value = loadSessionUserInfo();
-    }
+  () => userInfo.value,
+  (val, oldVal) => {
+    console.debug('[DEBUG] userInfo changed (composable):', { oldVal, val });
   },
+  { immediate: true },
 );
 
 const pendingSubmissionTimes = ref<{
@@ -192,10 +178,6 @@ const pendingSubmissionTimes = ref<{
   endTime: number;
 } | null>(null);
 const { identifier: episodeIdentifier } = useEpisodeIdentifier();
-const { refetch: refetchMySubmissions } = useMySubmissions(); // Get refetch function for user submissions
-
-// TODO: Fetch episode info (showName, season, episode) if needed for SubmissionData
-// This might involve using useEpisodeInfoQuery or similar
 // Fetch actual episode info using the query composable
 const {
   data: episodeData, // Rename to avoid conflict with SubmissionData 'data' variable later
@@ -203,9 +185,32 @@ const {
   isError: isEpisodeInfoError, // Optional: use for error states if needed
 } = useEpisodeInfoQuery();
 
+watch(
+  episodeData,
+  (val) => {
+    console.log('[DEBUG] episodeData.value in Player.vue:', val);
+  },
+  { immediate: true },
+);
+
+import { computed } from 'vue';
+// ...
+const normalizedEpisodeData = computed(() => {
+  const ed = episodeData.value || {};
+  return {
+    showName: ed.showName ?? '',
+    season: ed.season ?? '',
+    number: ed.number ?? '',
+  };
+});
+
+const { refetch: refetchMySubmissions } = useMySubmissions({
+  episodeData: normalizedEpisodeData,
+}); // Get refetch function for user submissions
+
 // Called by event handler in Toolbar.vue (or directly if tool is moved here)
 function openSubmissionModal(startTime: number, endTime: number) {
-  if (!sessionUserInfo.value) {
+  if (!userInfo.value) {
     showSessionUserInfoModal.value = true;
     pendingSubmissionTimes.value = { startTime, endTime };
     return;
@@ -219,8 +224,7 @@ function handleSessionUserInfoSubmit(info: {
   firstName: string;
   phone: string;
 }) {
-  sessionUserInfo.value = info;
-  saveSessionUserInfo(info);
+  saveUserInfo(info);
   showSessionUserInfoModal.value = false;
   // If a submission was pending, open the modal now
   if (pendingSubmissionTimes.value) {
@@ -277,7 +281,7 @@ function closeAndResetModal() {
       <toolbar
         class="absolute bottom-0 inset-x-0"
         :hidden="isToolbarHidden"
-        :session-user-info="sessionUserInfo"
+        :session-user-info="userInfo"
         @request-submit="openSubmissionModal"
         @show-user-modal="showUserInfoModal = true"
       />
@@ -304,7 +308,7 @@ function closeAndResetModal() {
       showSubmissionModal &&
       pendingSubmissionTimes &&
       episodeIdentifier &&
-      sessionUserInfo
+      userInfo
     "
     :start-time="pendingSubmissionTimes.startTime"
     :end-time="pendingSubmissionTimes.endTime"
@@ -312,8 +316,8 @@ function closeAndResetModal() {
     :show-name="episodeData?.showName"
     :season-number="episodeData?.season?.toString()"
     :episode-number="episodeData?.number?.toString()"
-    :first-name="sessionUserInfo.firstName"
-    :phone="sessionUserInfo.phone"
+    :first-name="userInfo?.firstName"
+    :phone="userInfo?.phone"
     @close="handleModalCancel"
   />
   <UserInfoModal

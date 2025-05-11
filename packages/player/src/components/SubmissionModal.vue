@@ -1,4 +1,5 @@
 <script lang="ts" setup>
+import { useSessionUserInfo } from '../composables/useSessionUserInfo';
 import { ref, computed, watch } from 'vue';
 import { formatTimestampInS } from '../utils/time-utils';
 
@@ -79,7 +80,9 @@ watch(
 
 // --- Functions ---
 function submitToGoogleForm() {
-  // Only use sessionUserInfo (props.firstName, props.phone) for prefill
+  // Only use userInfo (from composable) for prefill
+
+  const { userInfo } = useSessionUserInfo();
 
   submissionError.value = null; // Clear previous errors
   try {

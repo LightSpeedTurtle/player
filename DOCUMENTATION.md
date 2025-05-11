@@ -4,28 +4,34 @@
 
 This extension requires the user to provide a phone number for personalized filtering of timestamp submissions. If the phone number is missing from localStorage, the extension automatically prompts the user to enter it via a modal dialog.
 
-## How It Works
+## How It Works (2025+)
 
-- On mount, the extension checks if `sessionUserInfo.phone` exists in `localStorage`.
-- If missing, a modal (`UserInfoModal.vue`) is displayed asking the user to enter their phone number.
-- The phone number is validated (digits only, 7-15 digits) and saved to `localStorage` as `{ phone: '1234567890' }`.
-- When the modal closes, the extension re-checks for the phone number and reloads the page if it is now present.
-- This ensures the filtering logic always has the required user context and prevents silent failures.
+- User info (first name, phone) is managed via the `useSessionUserInfo` composable, which is the single source of truth for user info state.
+- On mount, the app checks if `userInfo.value` exists (from the composable). If missing, the modal (`UserInfoModal.vue`) is shown to prompt for info.
+- User info is validated and saved via the composable, which keeps both Vue state and `localStorage` in sync.
+- All components should access user info via the composable, not directly from `localStorage`.
+- The modal pre-fills fields with existing info (if any) and only resets to blank if no info is present.
+- This ensures all user info is consistent, persistent, and reactively updates the UI wherever used.
 
 ## Developer Integration
 
-- The modal is integrated in `SidePanel.vue`.
-- The modal can be shown by setting `showUserModal.value = true`.
-- The modal emits a `close` event when the user saves their phone number.
+- Import and use the composable in any component:
+
+  ```js
+  import { useSessionUserInfo } from '../composables/useSessionUserInfo';
+  const { userInfo, saveUserInfo } = useSessionUserInfo();
+  ```
+
+- Show the modal by toggling the appropriate `showUserInfoModal` ref in your component.
+- The modal emits a `close` event when the user saves their info.
+- Always use the composable for reading and writing user info.
 
 ## Example
 
 ```js
-// Check for session user info
-const sessionUserInfo = JSON.parse(
-  localStorage.getItem('sessionUserInfo') || '{}',
-);
-if (!sessionUserInfo.phone) {
+import { useSessionUserInfo } from '../composables/useSessionUserInfo';
+const { userInfo } = useSessionUserInfo();
+if (!userInfo.value) {
   // Show modal
 }
 ```
