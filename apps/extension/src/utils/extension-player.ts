@@ -79,8 +79,7 @@ export async function initExtensionPlayer(
       );
       const episodeIdentifier =
         options.transformServiceUrl?.(url) ?? stripUrl(url);
-      // Set the shared state *after* getting the identifier
-      setIdentifier(episodeIdentifier);
+      // The global identifier is set by Player.vue. This function just returns the processed URL/ID.
       return episodeIdentifier;
     },
     disableContextMenu: true,

@@ -1,6 +1,10 @@
 <script lang="ts" setup>
 import { useSessionUserInfo } from '../composables/useSessionUserInfo';
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, onMounted, watchEffect } from 'vue';
+import {
+  useEpisodeLinks,
+  type EpisodeLinkSet,
+} from '../composables/useEpisodeLinks';
 import { formatTimestampInS } from '../utils/time-utils';
 
 // No longer exporting SubmissionData as it's internal to the pre-fill logic now
@@ -8,7 +12,8 @@ import { formatTimestampInS } from '../utils/time-utils';
 const props = defineProps<{
   startTime: string | number;
   endTime: string | number;
-  episodeIdentifier: string;
+  episodeIdentifier?: string; // Usually the URL of the current episode, or a unique ID
+  currentPageUrl?: string; // Added to get the full URL for prefill
   showName?: string;
   seasonNumber?: string;
   episodeNumber?: string;
@@ -23,19 +28,25 @@ const emits = defineEmits<{
 
 // --- Google Form Configuration ---
 const googleFormBaseUrl =
-  'https://docs.google.com/forms/d/e/1FAIpQLSf2WWjjsq4W3H9u0cuFXL1KzWVJ-aOaOSczp9l0T8JnJOkhFw/viewform';
+  'https://docs.google.com/forms/d/e/1FAIpQLSemj8Yea0hZloQTjrsbLibFANfNIDFe0B3zeGRZU3tB_FS84w/viewform';
+// IMPORTANT: Replace these placeholder entry IDs with the actual values from your new Google Form.
+// You can find these by inspecting the form's HTML or using the 'Get pre-filled link' feature.
 const entryIds = {
-  showOrMovie: 'entry.2030484978',
-  titleName: 'entry.157604786',
-  sceneStartTime: 'entry.272854963',
-  sceneEndTime: 'entry.575276722',
-  contentType: 'entry.12341966', // All three content types use this entry ID
-  plotDescription: 'entry.1704199248',
-  seasonAndEpisode: 'entry.847768405',
-  firstName: 'entry.549317747',
-  phone: 'entry.1862971484',
-  // Add hidden field ID if you want to pass episodeIdentifier
-  // hiddenEpisodeIdentifier: 'ENTRY_ID_FOR_EPISODE_IDENTIFIER'
+  showOrMovie: 'entry.2030484978', // e.g., entry.123456789
+  firstName: 'entry.549317747', // e.g., entry.234567890
+  phone: 'entry.1862971484', // e.g., entry.345678901
+  titleName: 'entry.157604786', // e.g., entry.456789012
+  seasonAndEpisode: 'entry.847768405', // e.g., entry.567890123 (Used if 'Show' is selected)
+  sceneStartTime: 'entry.272854963', // e.g., entry.678901234
+  sceneEndTime: 'entry.575276722', // e.g., entry.789012345
+  contentType: 'entry.12341966', // e.g., entry.890123456 (For checkboxes, append multiple times)
+  plotDescription: 'entry.1704199248', // e.g., entry.901234567
+  crunchyrollLink: 'entry.196890503', // e.g., entry.012345678
+  hianimeLink: 'entry.1796451259', // e.g., entry.112233445
+  animepaheLink: 'entry.1345515441', // e.g., entry.223344556
+  nineAnimeLink: 'entry.1000804819', // e.g., entry.334455667
+  netflixLink: 'entry.1648223720', // e.g., entry.445566778
+  // episodeIdentifierHidden: 'ENTRY_ID_FOR_EPISODE_IDENTIFIER_HIDDEN' // Optional: if you add a hidden field for the raw identifier/URL
 };
 // --- End Configuration ---
 
@@ -51,6 +62,14 @@ const isShow = ref(!!(props.seasonNumber || props.episodeNumber)); // Initial gu
 const selectedTypes = ref<string[]>([]);
 const explanation = ref('');
 const submissionError = ref<string | null>(null); // For errors opening the form
+
+// --- Episode Specific Links State ---
+const { getLinksForEpisode, saveLinksForEpisode } = useEpisodeLinks();
+const crunchyrollLink = ref('');
+const hianimeLink = ref('');
+const animepaheLink = ref('');
+const nineAnimeLink = ref('');
+const netflixLink = ref('');
 
 // --- Computed Values ---
 const formattedStartTime = computed(() =>
@@ -78,43 +97,146 @@ watch(
   },
 );
 
+// Load saved links when the modal is mounted or episodeIdentifier changes
+watchEffect(async () => {
+  if (props.episodeIdentifier) {
+    const savedLinks = await getLinksForEpisode(props.episodeIdentifier);
+
+    // Initialize all link refs to empty strings
+    crunchyrollLink.value = '';
+    hianimeLink.value = '';
+    animepaheLink.value = '';
+    nineAnimeLink.value = '';
+    netflixLink.value = '';
+
+    let prefilledFromCurrentUrlForCrunchy = false;
+
+    // Attempt to prefill from currentPageUrl if available
+    if (props.currentPageUrl) {
+      try {
+        const currentUrl = new URL(props.currentPageUrl);
+        const hostname = currentUrl.hostname.toLowerCase();
+
+        if (hostname.includes('crunchyroll.com')) {
+          crunchyrollLink.value = props.currentPageUrl;
+          prefilledFromCurrentUrlForCrunchy = true;
+        } else if (
+          hostname.includes('hianime.to') ||
+          hostname.includes('aniwave.to')
+        ) {
+          hianimeLink.value = props.currentPageUrl;
+        } else if (
+          hostname.includes('animepahe.com') ||
+          hostname.includes('animepahe.ru')
+        ) {
+          animepaheLink.value = props.currentPageUrl;
+        } else if (hostname.includes('9anime')) {
+          // Broad match for 9anime domains
+          nineAnimeLink.value = props.currentPageUrl;
+        } else if (hostname.includes('netflix.com')) {
+          netflixLink.value = props.currentPageUrl;
+        }
+      } catch (e) {
+        console.warn(
+          'Could not parse currentPageUrl for domain matching:',
+          props.currentPageUrl,
+          e,
+        );
+      }
+    }
+
+    // Apply saved links, which will override prefill from current URL if present for that specific link
+    if (savedLinks) {
+      if (savedLinks.crunchyrollLink)
+        crunchyrollLink.value = savedLinks.crunchyrollLink;
+      if (savedLinks.hianimeLink) hianimeLink.value = savedLinks.hianimeLink;
+      if (savedLinks.animepaheLink)
+        animepaheLink.value = savedLinks.animepaheLink;
+      if (savedLinks.nineAnimeLink)
+        nineAnimeLink.value = savedLinks.nineAnimeLink;
+      if (savedLinks.netflixLink) netflixLink.value = savedLinks.netflixLink;
+    }
+
+    // Fallback for Crunchyroll link using episodeIdentifier or currentPageUrl if still empty
+    // This maintains the original behavior where episodeIdentifier might be a Crunchyroll URL.
+    if (!crunchyrollLink.value) {
+      // If CR link is still empty after domain check and saved links
+      if (
+        props.episodeIdentifier &&
+        props.episodeIdentifier.includes('crunchyroll.com')
+      ) {
+        crunchyrollLink.value = props.episodeIdentifier;
+      } else if (
+        props.currentPageUrl &&
+        props.currentPageUrl.includes('crunchyroll.com') &&
+        !prefilledFromCurrentUrlForCrunchy
+      ) {
+        // If episodeIdentifier wasn't a CR link, but currentPageUrl is, and it wasn't caught by the hostname check
+        crunchyrollLink.value = props.currentPageUrl;
+      }
+    }
+  } else {
+    // If no episodeIdentifier, clear all links (should also be handled by initialization above, but good for clarity)
+    crunchyrollLink.value = '';
+    hianimeLink.value = '';
+    animepaheLink.value = '';
+    nineAnimeLink.value = '';
+    netflixLink.value = '';
+  }
+});
+
 // --- Functions ---
-function submitToGoogleForm() {
+async function submitToGoogleForm() {
+  // Made async to await link saving
   // Only use userInfo (from composable) for prefill
 
   const { userInfo } = useSessionUserInfo();
 
   submissionError.value = null; // Clear previous errors
   try {
+    // Save the current links for this episode before constructing the form URL
+    if (props.episodeIdentifier) {
+      const currentLinks: EpisodeLinkSet = {
+        crunchyrollLink: crunchyrollLink.value.trim(),
+        hianimeLink: hianimeLink.value.trim(),
+        animepaheLink: animepaheLink.value.trim(),
+        nineAnimeLink: nineAnimeLink.value.trim(),
+        netflixLink: netflixLink.value.trim(),
+      };
+      await saveLinksForEpisode(props.episodeIdentifier, currentLinks);
+    }
+
     const params = new URLSearchParams();
 
-    // Section 1: Show/Movie Choice
+    // Pre-fill fields based on the new form structure and entry IDs
     params.set(entryIds.showOrMovie, isShow.value ? 'Show' : 'Movie');
-
-    // Section 2/3 Common Fields
-    params.set(entryIds.titleName, props.showName || '');
-    params.set(entryIds.sceneStartTime, formattedStartTime.value);
-    params.set(entryIds.sceneEndTime, formattedEndTime.value);
-    params.set(entryIds.plotDescription, explanation.value.trim() || '');
     params.set(entryIds.firstName, props.firstName || '');
     params.set(entryIds.phone, props.phone || '');
+    params.set(entryIds.titleName, props.showName || ''); // Maps to 'Show/Movie Name (Full)'
 
-    // Content Type Checkboxes
-    selectedTypes.value.forEach((type) => {
-      // Use the specific entry ID for checkboxes. The _sentinel is usually a hidden field.
-      // Double-check your form's pre-filled link generator for the correct way to handle checkboxes.
-      // Often, each checkbox option has its own value associated with the *same* entry ID.
-      params.append(entryIds.contentType, type);
-    });
-
-    // Section 2 Only (Show)
     if (isShow.value) {
       params.set(entryIds.seasonAndEpisode, formattedSeasonEpisode.value);
     }
 
-    // Optional: Add hidden fields like episodeIdentifier
-    // if (entryIds.hiddenEpisodeIdentifier && props.episodeIdentifier) {
-    //   params.set(entryIds.hiddenEpisodeIdentifier, props.episodeIdentifier);
+    params.set(entryIds.sceneStartTime, formattedStartTime.value);
+    params.set(entryIds.sceneEndTime, formattedEndTime.value);
+
+    selectedTypes.value.forEach((type) => {
+      params.append(entryIds.contentType, type);
+    });
+
+    params.set(entryIds.plotDescription, explanation.value.trim() || '');
+
+    // Pre-fill Link Fields
+    params.set(entryIds.crunchyrollLink, crunchyrollLink.value.trim());
+    params.set(entryIds.hianimeLink, hianimeLink.value.trim());
+    params.set(entryIds.animepaheLink, animepaheLink.value.trim());
+    params.set(entryIds.nineAnimeLink, nineAnimeLink.value.trim());
+    params.set(entryIds.netflixLink, netflixLink.value.trim());
+
+    // Optional: If you add a hidden field in your Google Form for the raw episodeIdentifier (URL/ID from the player)
+    // if (entryIds.episodeIdentifierHidden && props.episodeIdentifier) {
+    //   params.set(entryIds.episodeIdentifierHidden, props.episodeIdentifier);
     // }
 
     const prefilledUrl = `${googleFormBaseUrl}?${params.toString()}`;
@@ -195,6 +317,32 @@ function cancel() {
         />
       </div>
 
+      <!-- First Name Display -->
+      <div class="form-control w-full">
+        <label class="label">
+          <span class="label-text">First Name</span>
+        </label>
+        <input
+          type="text"
+          :value="props.firstName"
+          class="input input-bordered w-full"
+          disabled
+        />
+      </div>
+
+      <!-- Phone Number Display -->
+      <div class="form-control w-full">
+        <label class="label">
+          <span class="label-text">Phone Number</span>
+        </label>
+        <input
+          type="text"
+          :value="props.phone"
+          class="input input-bordered w-full"
+          disabled
+        />
+      </div>
+
       <!-- Season/Episode Display (Conditional) -->
       <div v-if="isShow" class="form-control w-full">
         <label class="label">
@@ -213,6 +361,22 @@ function cancel() {
         Segment: <span class="font-mono">{{ formattedStartTime }}</span> -
         <span class="font-mono">{{ formattedEndTime }}</span>
       </p>
+
+      <!-- Plot Description -->
+      <div class="form-control w-full">
+        <label class="label">
+          <span class="label-text">Plot Description (Optional)</span>
+          <span class="label-text-alt"
+            >Did anything important happen plot-wise?</span
+          >
+        </label>
+        <textarea
+          class="textarea textarea-bordered h-24"
+          placeholder="Briefly describe any plot points during this segment."
+          v-model="explanation"
+          @keydown.stop
+        ></textarea>
+      </div>
 
       <!-- Content Type Checkboxes -->
       <div class="form-control w-full">
@@ -244,29 +408,93 @@ function cancel() {
         </p>
       </div>
 
-      <!-- Explanation Textarea -->
+      <!-- Crunchyroll Link Input -->
       <div class="form-control w-full">
         <label class="label">
-          <span class="label-text">Plot Description (Optional)</span>
-          <span class="label-text-alt"
-            >Did anything important happen plot-wise?</span
-          >
+          <span class="label-text">Crunchyroll Link (Optional)</span>
         </label>
-        <textarea
-          class="textarea textarea-bordered h-24"
-          placeholder="Briefly describe any plot points during this segment."
-          v-model="explanation"
-          @keydown.stop
-        ></textarea>
+        <input
+          type="url"
+          v-model="crunchyrollLink"
+          placeholder="Crunchyroll URL for this episode"
+          class="input input-bordered w-full"
+        />
+      </div>
+
+      <!-- Hianime Link Input -->
+      <div class="form-control w-full">
+        <label class="label">
+          <span class="label-text">Hianime Link (Optional)</span>
+        </label>
+        <input
+          type="url"
+          v-model="hianimeLink"
+          placeholder="Paste Hianime URL for this episode"
+          class="input input-bordered w-full"
+        />
+      </div>
+
+      <!-- Animepahe Link Input -->
+      <div class="form-control w-full">
+        <label class="label">
+          <span class="label-text">Animepahe Link (Optional)</span>
+        </label>
+        <input
+          type="url"
+          v-model="animepaheLink"
+          placeholder="Paste Animepahe URL for this episode"
+          class="input input-bordered w-full"
+        />
+      </div>
+
+      <!-- 9Anime Link Input -->
+      <div class="form-control w-full">
+        <label class="label">
+          <span class="label-text">9Anime Link (Optional)</span>
+        </label>
+        <input
+          type="url"
+          v-model="nineAnimeLink"
+          placeholder="Paste 9Anime URL for this episode"
+          class="input input-bordered w-full"
+        />
+      </div>
+
+      <!-- Netflix Link Input -->
+      <div class="form-control w-full">
+        <label class="label">
+          <span class="label-text">Netflix Link (Optional)</span>
+        </label>
+        <input
+          type="url"
+          v-model="netflixLink"
+          placeholder="Paste Netflix URL for this episode"
+          class="input input-bordered w-full"
+        />
       </div>
 
       <!-- Error Display -->
-      <p v-if="submissionError" class="text-error text-sm text-center">
-        {{ submissionError }}
-      </p>
+      <div v-if="submissionError" class="alert alert-error shadow-lg mt-4">
+        <div>
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            class="stroke-current flex-shrink-0 h-6 w-6"
+            fill="none"
+            viewBox="0 0 24 24"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"
+            />
+          </svg>
+          <span>{{ submissionError }}</span>
+        </div>
+      </div>
 
       <!-- Actions -->
-      <div class="modal-action mt-2">
+      <div class="modal-action mt-4">
         <button type="button" class="btn btn-ghost" @click="cancel">
           Cancel
         </button>

@@ -7,6 +7,7 @@ import { SECOND } from '../utils/time';
 export default createGlobalState(() => {
   const { getEpisodeUrl } = usePlayerOptions();
   return useQuery(QueryKey.CurrentUrl, getEpisodeUrl, {
-    refetchInterval: SECOND,
+    // Removed refetchInterval: SECOND to prevent constant polling.
+    // The URL will be fetched on mount and when invalidated.
   });
 });

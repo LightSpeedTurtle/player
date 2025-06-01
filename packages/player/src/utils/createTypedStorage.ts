@@ -52,6 +52,10 @@ export function createTypedStorage(storage: IPlayerStorage): TypedStorage {
   };
 
   return {
+    getRawItem: async <T>(key: string): Promise<T | null> =>
+      await storage.getItem(key),
+    setRawItem: async <T>(key: string, value: T): Promise<void> =>
+      await storage.setItem(key, value),
     auth: createProperty('@anime-skip/player/auth'),
     dontShowStoreReviewPromptAgain: createProperty(
       'dontShowStoreReviewPromptAgain',
@@ -76,6 +80,8 @@ export function createTypedStorage(storage: IPlayerStorage): TypedStorage {
 }
 
 export interface TypedStorage {
+  getRawItem: <T>(key: string) => Promise<T | null>;
+  setRawItem: <T>(key: string, value: T) => Promise<void>;
   auth: TypedStorageProperty<{
     refreshToken: string;
     token: string;

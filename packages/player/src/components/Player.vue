@@ -14,14 +14,17 @@ import SubmissionModal from './SubmissionModal.vue'; // Import modal
 import SessionUserInfoModal from './SessionUserInfoModal.vue'; // Import session modal
 // Removed SubmissionData import as it's no longer exported or needed here
 import { useEpisodeIdentifier } from '../composables/useEpisodeIdentifier'; // Import identifier composable directly
+const { setIdentifier } = useEpisodeIdentifier(); // Import setIdentifier
 import { useMySubmissions } from '../composables/useMySubmissions'; // Import submissions composable directly
 import { Ref } from 'vue';
 // Import Supabase client and types directly
 import { createClient, User } from '@supabase/supabase-js';
 import InPlayerTimestampTool from './InPlayerTimestampTool.vue'; // Import tool to get ref
 import useEpisodeInfoQuery from '../composables/useEpisodeInfoQuery'; // Import the query composable
+import useCurrentUrlQuery from '../composables/useCurrentUrlQuery'; // Import for current page URL
 
 const root = ref<HTMLDivElement>();
+const { data: currentUrlData } = useCurrentUrlQuery(); // Get current URL data
 // Removed inPlayerToolRef - will use internal reset in tool component
 
 const isMouseActive = usePlayerMouseActive(root);
@@ -79,11 +82,27 @@ const client = useQueryClient();
 const { data: url } = useCurrentUrlQuery();
 const discardChanges = useDiscardChanges();
 
-watch(url, () => {
+watch(url, (newUrl) => {
   client.invalidateQueries(QueryKey.EpisodeInfo);
   if (isEditing.value) {
     // TODO: Don't discard changes, ask if the user wants to save their changes for the previous episode
     discardChanges();
+  }
+
+  // Extract and set the episode identifier from the new URL
+  if (newUrl) {
+    const match = newUrl.match(/\/watch\/([A-Z0-9]+)/);
+    const extractedId = match && match[1] ? match[1] : null;
+    console.log(
+      '[Player.vue] Extracted Episode ID:',
+      extractedId,
+      'from URL:',
+      newUrl,
+    );
+    setIdentifier(extractedId);
+  } else {
+    console.log('[Player.vue] URL is null, setting identifier to null');
+    setIdentifier(null);
   }
 });
 
@@ -313,6 +332,7 @@ function closeAndResetModal() {
     :start-time="pendingSubmissionTimes.startTime"
     :end-time="pendingSubmissionTimes.endTime"
     :episode-identifier="episodeIdentifier"
+    :currentPageUrl="currentUrlData?.url"
     :show-name="episodeData?.showName"
     :season-number="episodeData?.season?.toString()"
     :episode-number="episodeData?.number?.toString()"

@@ -1,8 +1,36 @@
-import { ref, watch, shallowRef, computed } from 'vue';
+import { ref, watch, shallowRef } from 'vue';
 import type { Ref, ShallowRef } from 'vue';
 import type { MySubmission } from '../types/MySubmission';
 import { useEpisodeIdentifier } from './useEpisodeIdentifier';
 import { useSessionUserInfo } from './useSessionUserInfo';
+
+// Define types for the Google Sheets API response
+interface SubmissionRow {
+  Timestamp?: string;
+  'Email Address'?: string;
+  'Show or Movie?'?: string;
+  'First Name'?: string;
+  'Phone Number'?: string;
+  'Show/Movie Name (Full)'?: string;
+  'Season and Episode'?: string;
+  'Scene Start Time'?: string;
+  'Scene End Time'?: string;
+  'Type of Content'?: string;
+  'Did anything important to the plot happen in this scene? If so, please describe it (spare us any explicit details or language though). If not, leave this blank'?: string;
+  Status?: string;
+  'Crunchyroll Link'?: string;
+  'Hianime Link'?: string;
+  'Animepahe Link'?: string;
+  '9Anime Link'?: string;
+  'Netflix Link'?: string;
+  'Edit Link'?: string;
+  'Response ID'?: string;
+  'Crunchyroll ID'?: string;
+  'Hianime ID'?: string;
+  'Animepahe ID'?: string;
+  '9Anime ID'?: string;
+  'Netflix ID'?: string;
+}
 
 /**
  * Custom composable to fetch and filter user submissions from Google Sheets
@@ -34,9 +62,14 @@ export function useMySubmissions({
   // Get episode identifier from composable
   const { identifier: episodeIdentifier } = useEpisodeIdentifier();
 
-  // API endpoint for Google Sheets
+  // API endpoint for Google Sheets with new server-side filtering
   const GOOGLE_SHEET_API_URL =
-    'https://script.google.com/macros/s/AKfycbwdbg4IqRtlH2uq5FEaQJIdJqkkZIcNk9tGXrWWqugLXGU6n7SnWrL9ozK1NMxhuaFI/exec';
+    'https://script.google.com/macros/s/AKfycbyWSyat6E7Fnx359yhUDsvIYnFHy2InFlNCY68SgCX-fO62mP-Ui5cD1NbuhD2RmhDD/exec';
+
+  // Maximum number of retries for failed requests
+  const MAX_RETRIES = 3;
+  // Base delay between retries in ms
+  const RETRY_DELAY = 1000;
 
   // Toggle function for test mode
   const toggleTestMode = () => {
@@ -102,8 +135,84 @@ export function useMySubmissions({
   );
 
   /**
+   * Helper function to parse time strings into seconds
+   */
+  function parseTime(str: any): number {
+    if (!str) return 0;
+    const parts = String(str).split(':').map(Number);
+    if (parts.length === 2) return parts[0] * 60 + parts[1];
+    if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+    return Number(str) || 0;
+  }
+
+  /**
+   * Fetches data from the Google Sheets API with retry logic
+   */
+  async function fetchWithRetry(
+    url: string,
+    options: RequestInit = {},
+    retries = MAX_RETRIES,
+  ): Promise<Response> {
+    let lastError: Error;
+
+    // Prepare options, removing Content-Type for GET requests
+    const fetchOptions = { ...options };
+    if (fetchOptions.method === 'GET' || !fetchOptions.method) {
+      if (
+        fetchOptions.headers &&
+        (fetchOptions.headers as Record<string, string>)['Content-Type']
+      ) {
+        delete (fetchOptions.headers as Record<string, string>)['Content-Type'];
+      }
+    }
+
+    for (let i = 0; i < retries; i++) {
+      try {
+        const response = await fetch(url, fetchOptions); // Use modified fetchOptions
+        if (response.ok) return response;
+
+        const error = new Error(`HTTP error! status: ${response.status}`);
+        (error as any).status = response.status;
+        throw error;
+      } catch (error) {
+        lastError = error as Error;
+        if (i < retries - 1) {
+          // Wait for an increasing delay before retrying (exponential backoff)
+          const delay = RETRY_DELAY * Math.pow(2, i);
+          await new Promise((resolve) => setTimeout(resolve, delay));
+        }
+      }
+    }
+
+    throw lastError || new Error('Unknown error occurred during fetch');
+  }
+
+  /**
+   * Transforms a SubmissionRow from the API into a MySubmission
+   */
+  function transformSubmission(row: SubmissionRow): MySubmission {
+    return {
+      id: row['Response ID'] || '', // Use Response ID as primary, ensure it's a string or number as per MySubmission type
+      start_time: row['Scene Start Time'] || '',
+      start_seconds: parseTime(row['Scene Start Time']),
+      end_time: row['Scene End Time'] || '',
+      end_seconds: parseTime(row['Scene End Time']),
+      type: row['Type of Content'] || '',
+      explanation:
+        row[
+          'Did anything important to the plot happen in this scene? If so, please describe it (spare us any explicit details or language though). If not, leave this blank'
+        ] || '',
+      state: row.Status || '', // Will map to 'Pending', 'Approved', etc.
+      submitted_at: row.Timestamp || '', // Form submission time
+      show_name: row['Show/Movie Name (Full)'] || '',
+      season_episode: row['Season and Episode'] || '',
+      edit_link: row['Edit Link'] || '',
+    };
+  }
+
+  /**
    * Main function to fetch and process submissions
-   * @param identifier Episode identifier string
+   * @param identifier Episode identifier string (Crunchyroll ID)
    */
   const execute = async (identifier: string | null) => {
     console.log('[useMySubmissions][execute] Starting execution', {
@@ -113,10 +222,10 @@ export function useMySubmissions({
       testMode: isTestMode.value,
     });
 
-    // If no identifier provided, return empty results
-    if (!identifier && !isTestMode.value) {
+    // In normal mode, require an identifier
+    if (!isTestMode.value && !identifier) {
       console.log(
-        '[useMySubmissions] No identifier provided, returning empty results',
+        '[useMySubmissions] No identifier provided in normal mode, returning empty results',
       );
       data.value = [];
       error.value = null;
@@ -128,287 +237,57 @@ export function useMySubmissions({
     error.value = null;
 
     try {
-      // Fetch data from Google Sheets
-      const response = await fetch(GOOGLE_SHEET_API_URL);
-      if (!response.ok) throw new Error('Failed to fetch Google Sheet data');
-      const sheetData = await response.json();
-      console.log('[useMySubmissions] Successfully fetched sheet data');
+      // Build the URL with query parameters
+      const url = new URL(GOOGLE_SHEET_API_URL);
 
-      // Helper function to parse time strings into seconds
-      function parseTime(str: any): number {
-        if (!str) return 0;
-        const parts = String(str).split(':').map(Number);
-        if (parts.length === 2) return parts[0] * 60 + parts[1];
-        if (parts.length === 3)
-          return parts[0] * 3600 + parts[1] * 60 + parts[2];
-        return Number(str) || 0;
-      }
-
-      /**
-       * Extract season and episode numbers from a string
-       * Handles multiple formats: "Season 1 Episode 2", "S1E2", "S1 E2", "1 2"
-       */
-      function extractSeasonEpisode(seasonEpisodeStr: string): {
-        season: string | null;
-        episode: string | null;
-      } {
-        seasonEpisodeStr = seasonEpisodeStr.toLowerCase();
-        // Try to match common patterns first
-        const regex =
-          /season\s*(\d+)\s*(special\s*)?episode\s*(\d+)|s(\d+)\s*e(\d+)|s(\d+)e(\d+)/i;
-        const match = seasonEpisodeStr.match(regex);
-
-        let seasonMatch = null;
-        let episodeMatch = null;
-
-        if (match) {
-          seasonMatch = match[1] || match[4] || match[6];
-          episodeMatch = match[3] || match[5] || match[7];
+      if (isTestMode.value) {
+        // In test mode, just add testMode parameter
+        url.searchParams.append('testMode', 'true');
+      } else {
+        // In normal mode, add userPhone and identifier
+        if (userInfo.value?.phone) {
+          url.searchParams.append('userPhone', userInfo.value.phone);
         }
-
-        // Fallback: try to extract two numbers
-        if (!seasonMatch || !episodeMatch) {
-          const numbers = seasonEpisodeStr.match(/\d+/g);
-          if (numbers && numbers.length >= 2) {
-            seasonMatch = numbers[0];
-            episodeMatch = numbers[1];
-          }
+        if (identifier) {
+          url.searchParams.append('identifier', identifier);
         }
-
-        return {
-          season: seasonMatch ? String(seasonMatch) : null,
-          episode: episodeMatch ? String(episodeMatch) : null,
-        };
       }
 
-      let mappedSubmissions: MySubmission[] = [];
-      let processedRowCount = 0;
-      let filteredRowCount = 0;
+      // Add cache buster to prevent caching
+      url.searchParams.append('_', Date.now().toString());
 
-      // Process array-format data (most common format)
-      if (Array.isArray(sheetData) && Array.isArray(sheetData[0])) {
-        console.log('[useMySubmissions] Processing array-format sheet data');
+      console.log('[useMySubmissions] Fetching data from:', url.toString());
 
-        // Skip header row
-        const rows = sheetData.slice(1);
-        processedRowCount = rows.length;
-
-        // Filter and map rows to MySubmission objects
-        mappedSubmissions = rows
-          .filter((row: any[]) => {
-            // In test mode, only filter for valid timestamps
-            if (isTestMode.value) {
-              const hasValidTimes = row[7] && row[8];
-              return hasValidTimes;
-            }
-
-            // --- 1. User Phone Filter ---
-            const userPhone = String(userInfo?.value?.phone || '').replace(
-              /\D/g,
-              '',
-            );
-            const rowPhone = String(row[4] || '').replace(/\D/g, '');
-
-            if (!userPhone || !rowPhone || userPhone !== rowPhone) {
-              return false;
-            }
-
-            // --- 2. Show Name Filter ---
-            const filterShow = String(episodeData?.value?.showName || '')
-              .trim()
-              .toLowerCase();
-            const rowShow = String(row[5] || '')
-              .trim()
-              .toLowerCase();
-
-            if (!filterShow || !rowShow || rowShow !== filterShow) {
-              return false;
-            }
-
-            // --- 3. Season/Episode Filter ---
-            const filterSeason = String(
-              episodeData?.value?.season || '',
-            ).trim();
-            const filterEpisode = String(
-              episodeData?.value?.number || '',
-            ).trim();
-            const rowSeasonEpisode = String(row[6] || '');
-
-            if (!filterSeason || !filterEpisode || !rowSeasonEpisode) {
-              return false;
-            }
-
-            // Extract and compare season/episode
-            const { season: rowSeason, episode: rowEpisode } =
-              extractSeasonEpisode(rowSeasonEpisode);
-            if (
-              !rowSeason ||
-              !rowEpisode ||
-              rowSeason !== filterSeason ||
-              rowEpisode !== filterEpisode
-            ) {
-              return false;
-            }
-
-            // --- 4. Check for valid timestamps ---
-            if (!row[7] || !row[8]) {
-              return false;
-            }
-
-            // Row passed all filters
-            filteredRowCount++;
-            return true;
-          })
-          .map((row: any[], idx: number) => {
-            // Parse time values
-            const startRaw = row[7] || '';
-            const endRaw = row[8] || '';
-            const startSeconds = parseTime(startRaw);
-            const endSeconds = parseTime(endRaw);
-
-            // Create submission object
-            return {
-              id: row[0] || `submission-${idx}`,
-              start_time: startRaw,
-              start_seconds: startSeconds,
-              end_time: endRaw,
-              end_seconds: endSeconds,
-              type: String(row[9] || ''),
-              explanation: row[10] || '',
-              state: '', // No explicit Status column in this format
-              submitted_at: row[0] || '',
-              show_name: row[5] || '',
-              season_episode: row[6] || '',
-              edit_link: row[19] || '', // Column T (index 19)
-            } as MySubmission;
-          });
-      } else if (Array.isArray(sheetData)) {
-        // Process object-format data (alternative format)
-        console.log('[useMySubmissions] Processing object-format sheet data');
-        processedRowCount = sheetData.length;
-
-        mappedSubmissions = (sheetData as any[])
-          .filter((row) => {
-            // Check for valid timestamps first
-            const startRaw = row['Scene Start Time'] || '';
-            const endRaw = row['Scene End Time'] || '';
-            if (!startRaw || !endRaw) return false;
-
-            // In test mode, only filter for valid timestamps
-            if (isTestMode.value) {
-              return true;
-            }
-
-            // --- 1. User Phone Filter ---
-            const userPhone = String(userInfo?.value?.phone || '').replace(
-              /\D/g,
-              '',
-            );
-            const rowPhone = String(row['Phone Number'] || '').replace(
-              /\D/g,
-              '',
-            );
-            if (!userPhone || !rowPhone || rowPhone !== userPhone) {
-              return false;
-            }
-
-            // --- 2. Show Name Filter ---
-            if (episodeData?.value?.showName) {
-              const rowShow = String(row['Show Name (Full)'] || '')
-                .trim()
-                .toLowerCase();
-              const targetShow = String(episodeData.value.showName)
-                .trim()
-                .toLowerCase();
-              if (!rowShow || rowShow !== targetShow) {
-                return false;
-              }
-            } else {
-              return false;
-            }
-
-            // --- 3. Season/Episode Filter ---
-            const filterSeason = String(
-              episodeData?.value?.season || '',
-            ).trim();
-            const filterEpisode = String(
-              episodeData?.value?.number || '',
-            ).trim();
-            if (!filterSeason || !filterEpisode) {
-              return false;
-            }
-
-            // Find the season/episode field (may have different key names)
-            const seasonEpisodeKey = Object.keys(row).find((k) => {
-              const key = k.toLowerCase();
-              return key.includes('season') && key.includes('episode');
-            });
-
-            if (!seasonEpisodeKey || !row[seasonEpisodeKey]) {
-              return false;
-            }
-
-            // Extract and match season/episode
-            const { season: rowSeason, episode: rowEpisode } =
-              extractSeasonEpisode(String(row[seasonEpisodeKey]));
-            if (
-              !rowSeason ||
-              !rowEpisode ||
-              rowSeason !== filterSeason ||
-              rowEpisode !== filterEpisode
-            ) {
-              return false;
-            }
-
-            // Row passed all filters
-            filteredRowCount++;
-            return true;
-          })
-          .map((row, idx) => {
-            // Parse time values
-            const startRaw = row['Scene Start Time'] || '';
-            const endRaw = row['Scene End Time'] || '';
-            const startSeconds = parseTime(startRaw);
-            const endSeconds = parseTime(endRaw);
-
-            // Create submission object
-            return {
-              id: row['Timestamp ID'] || `obj-submission-${idx}`,
-              start_time: startRaw,
-              start_seconds: startSeconds,
-              end_time: endRaw,
-              end_seconds: endSeconds,
-              type: String(row['Type of Content'] || ''),
-              explanation:
-                row['Did anything important to the plot happen'] || '',
-              state: row['Status'] || '',
-              submitted_at: row['Timestamp Submitted'] || '',
-              show_name: row['Show Name (Full)'] || '',
-              season_episode: row['Season and Episode'] || '',
-              edit_link: row['Edit Link'] || '',
-            } as MySubmission;
-          });
-      }
-      // Add summary logging for debugging
-      console.log(`[useMySubmissions] Data processing complete:`, {
-        processedRows: processedRowCount,
-        filteredRows: filteredRowCount,
-        finalSubmissions: mappedSubmissions.length,
-        testMode: isTestMode.value,
+      // Fetch data from Google Sheets with retry logic
+      const response = await fetchWithRetry(url.toString(), {
+        method: 'GET',
+        // headers: { // Content-Type header removed for GET
+        //   'Content-Type': 'application/json',
+        // },
       });
 
-      // Sort submissions by start time for better display order
-      mappedSubmissions.sort((a, b) => a.start_seconds - b.start_seconds);
+      if (!response.ok) {
+        throw new Error(
+          `Failed to fetch Google Sheet data: ${response.status} ${response.statusText}`,
+        );
+      }
 
-      // Update reactive state
-      data.value = mappedSubmissions;
-    } catch (err: any) {
-      console.error(
-        '[useMySubmissions] Error fetching or processing data:',
-        err,
+      const sheetData = (await response.json()) as SubmissionRow[];
+      console.log(
+        `[useMySubmissions] Successfully fetched ${sheetData.length} submissions`,
       );
-      error.value = err;
-      data.value = [];
+
+      // Transform the data to match MySubmission type
+      const mappedSubmissions = sheetData.map(transformSubmission);
+
+      // Update the reactive state
+      data.value = mappedSubmissions;
+      error.value = null;
+    } catch (err) {
+      console.error('[useMySubmissions] Error fetching submissions:', err);
+      error.value =
+        err instanceof Error ? err : new Error('Unknown error occurred');
+      data.value = null;
     } finally {
       isLoading.value = false;
     }
